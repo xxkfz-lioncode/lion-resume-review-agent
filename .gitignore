@@ -1,0 +1,24 @@
+# Java / Maven
+target/
+*.class
+*.jar
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# 运行时数据
+data/
+
+# 环境变量（含密钥，勿提交；模板见 .env.example）
+.env
+
+# 系统
+.DS_Store
+Thumbs.db
+*.log

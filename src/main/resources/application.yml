@@ -1,0 +1,132 @@
+server:
+  port: 8080
+
+spring:
+  config:
+    # 本地开发：从工程根目录 .env 文件加载环境变量（已 gitignore，模板见 .env.example）
+    import: optional:file:.env[.properties]
+
+  application:
+    name: resume-review
+
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
+  # ---------- MySQL ----------
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/resume_review?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${MYSQL_USERNAME:}
+    password: ${MYSQL_PASSWORD:}
+
+  # ---------- Redis ----------
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 9
+      timeout: 5s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 0
+
+  # ---------- SSE 支持 ----------
+  mvc:
+    async:
+      request-timeout: 30m
+
+  ai:
+    # DashScope / 千问大模型
+    dashscope:
+      # API Key 经环境变量注入（.env 中 DASHSCOPE_API_KEY），不写死在配置文件
+      api-key: ${DASHSCOPE_API_KEY:}
+      chat:
+        options:
+          model: qwen3.8-max
+          temperature: 0.7
+          max-tokens: 4096
+          multi-model: true # 关键：开启多模态端点
+    # Milvus 向量库（Spring AI 标准 VectorStore 自动配置；注释掉 client.host 即关闭）
+    vectorstore:
+      milvus:
+        client:
+          host: ${MILVUS_HOST:127.0.0.1}
+          port: 19530
+        database-name: default
+        collection-name: lion_agent_resume
+        embedding-dimension: 1024
+        # 首次启动自动建库建集合（需 DashScope API Key 已配置）
+        initialize-schema: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      id-type: assign_id
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# ---------- Sa-Token 鉴权 ----------
+sa-token:
+  token-name: satoken
+  timeout: 2592000      # 30 天
+  active-timeout: -1
+  is-concurrent: true
+  is-share: true
+  token-style: uuid
+  is-log: true
+
+# ---------- 简历审查业务配置 ----------
+resume:
+  # 上传文件保存目录
+  upload-dir: ./data/uploads
+  # LLM 节点失败重试次数
+  llm-retry-times: 3
+  # LLM 节点重试间隔(毫秒)
+  llm-retry-delay-ms: 1500
+  # 六维评分中，均值低于该值判定为"边缘候选"，触发人工复核
+  borderline-score: 6
+  # 模拟解析开关：true 时用本地规则解析简历(不依赖 OCR 服务)，便于本地快速体验
+  mock-parse: true
+
+# ---------- 演示账号 ----------
+# 后端代码兜底默认演示账号；生产环境用 APP_ADMIN_USERNAME / APP_ADMIN_PASSWORD 环境变量覆盖
+
+logging:
+  level:
+    com.lion: debug
+    com.alibaba.cloud.ai: warn
+    io.opentelemetry: DEBUG
+
+# ---------- Actuator 监控与 OpenTelemetry 可观测性 ----------
+management:
+  endpoints:
+    web:
+      exposure:
+        # 暴露全部 Actuator 端点（/actuator/health、/actuator/metrics 等），便于本地排查；生产建议收敛为 health,info
+        include: "*"
+  endpoint:
+    health:
+      # 健康检查始终返回明细（含各组件连接状态），方便确认 MySQL/Redis 等是否就绪
+      show-details: always
+  tracing:
+    sampling:
+      # 链路采样率：1.0 = 100% 全量采样（Langfuse 排障期建议全量，量大后可降为 0.1）
+      probability: 1.0
+  otlp:
+    tracing:
+      # Langfuse Cloud (US) OTLP 端点；路径必须含 /api/public/otel，缺了会 404
+      endpoint: ${LANGFUSE_OTLP_ENDPOINT:https://us.cloud.langfuse.com/api/public/otel/v1/traces}
+      headers:
+        # OTLP 端点的认证方式为 Basic Auth：base64(pk-lf-xxx:sk-lf-xxx)，经环境变量注入，不写死在配置文件
+        Authorization: "${LANGFUSE_AUTH_BASIC:}"
+        # v4 实时摄取：不加此头，OTel 数据可能延迟最多 10 分钟才入库
+        x-langfuse-ingestion-version: "4"

@@ -1,0 +1,144 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+  background: #f5f7fa;
+}
+
+/* 流程节点样式 */
+.status-node {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 220px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 2px solid #dcdfe6;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+  font-size: 13px;
+}
+
+.status-node .node-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f2f3f5;
+  color: #909399;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.status-node .node-label {
+  font-weight: 600;
+  color: #303133;
+}
+
+.status-node .node-status-text {
+  color: #909399;
+  font-size: 12px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+/* running: 蓝色脉冲 */
+.status-node.is-running {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+.status-node.is-running .node-icon {
+  background: #409eff;
+  color: #fff;
+  animation: pulse 1.2s infinite;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(64, 158, 255, 0.5); }
+  70% { box-shadow: 0 0 0 12px rgba(64, 158, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(64, 158, 255, 0); }
+}
+
+/* completed: 绿色打勾 */
+.status-node.is-completed {
+  border-color: #67c23a;
+  background: #f0f9eb;
+}
+.status-node.is-completed .node-icon {
+  background: #67c23a;
+  color: #fff;
+}
+
+/* error: 红色 */
+.status-node.is-error {
+  border-color: #f56c6c;
+  background: #fef0f0;
+  animation: shake 0.4s;
+}
+.status-node.is-error .node-icon {
+  background: #f56c6c;
+  color: #fff;
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+/* retrying: 橙色 */
+.status-node.is-retrying {
+  border-color: #e6a23c;
+  background: #fdf6ec;
+}
+.status-node.is-retrying .node-icon {
+  background: #e6a23c;
+  color: #fff;
+}
+
+/* pending / waiting: 琥珀色，等待人工 */
+.status-node.is-pending,
+.status-node.is-waiting {
+  border-color: #e6a23c;
+  background: #fdf6ec;
+  border-style: dashed;
+}
+.status-node.is-pending .node-icon,
+.status-node.is-waiting .node-icon {
+  background: #e6a23c;
+  color: #fff;
+}
+
+/* resumed */
+.status-node.is-resumed {
+  border-color: #8e44ad;
+  background: #f9f0ff;
+}
+.status-node.is-resumed .node-icon {
+  background: #8e44ad;
+  color: #fff;
+}
+
+/* 顶部进度条 */
+.progress-bar {
+  height: 8px;
+  background: #ebeef5;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-bar .progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #409eff, #67c23a);
+  transition: width 0.5s ease;
+  border-radius: 4px;
+}
