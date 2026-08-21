@@ -254,7 +254,7 @@ lion-resume-review-agent/           # 工程根目录 = Spring Boot 后端根目
 - Docker（可选，用于 MySQL / Redis / Milvus）
 - 阿里云 DashScope API Key（可选，未配置时 LLM 节点返回模拟数据）
 
-### 0. 准备环境变量
+### 1. 准备环境变量
 
 敏感配置（数据库口令 / API Key / 演示账号密码等）一律通过环境变量注入，`application.yml` 中无任何明文密钥：
 
@@ -264,7 +264,7 @@ cp .env.example .env   # 复制模板，按需填写 MySQL / Redis / DashScope /
 
 > 详见下文 [环境变量配置](#环境变量配置)。
 
-### 1. 启动基础设施
+### 2. 启动基础设施
 
 ```bash
 docker compose up -d mysql redis          # 最小依赖
@@ -278,7 +278,7 @@ docker compose up -d
 > > mysql -u root -p resume_review < src/main/resources/schema.sql
 > ```
 
-### 2. 启动后端
+### 3. 启动后端
 
 ```bash
 # 在工程根目录执行（.env 就绪后即可直接启动）
@@ -287,7 +287,7 @@ mvn spring-boot:run
 
 > 未配置 `DASHSCOPE_API_KEY` 时自动进入演示模式，LLM 节点返回模拟数据，全流程可跑通。
 
-### 3. 启动前端
+### 4. 启动前端
 
 ```bash
 cd frontend
@@ -297,13 +297,23 @@ npm run dev
 
 访问 `http://localhost:5173`，演示账号 `admin / admin123`（可用 `APP_ADMIN_USERNAME` / `APP_ADMIN_PASSWORD` 环境变量覆盖）。
 
-### 4. 体验流程
+### 5. 体验流程
 
 1. 登录 → 上传简历（PDF/TXT/MD）→ 填写岗位描述 → 点击「发起 AI 简历审查」。
 2. 中间「流程追踪面板」实时高亮当前节点（蓝色=执行中、绿色=完成、红色=异常），连线箭头指示流程方向。
 3. 右侧雷达图实时展示六维评分；报告以打字机效果流式渲染。
 4. 若 AI 评分低于及格线，自动弹出「HR 人工复核」弹窗，调整评分后继续。
 5. 完成后在「历史报告」中查看 / 搜索 / 删除 / 重新审查 / 导出报告。
+
+### 6. 效果图
+
+![image-20260821223521448](README.assets/image-20260821223521448.png)
+
+![image-20260821223538235](README.assets/image-20260821223538235.png)
+
+![image-20260821223908796](README.assets/image-20260821223908796.png)
+
+
 
 ---
 
@@ -402,6 +412,8 @@ npm run dev
 
 ## Langfuse 可观测性
 
+访问地址：https://us.cloud.langfuse.com/
+
 ### 集成原理
 
 ```
@@ -441,6 +453,10 @@ management:
 - **无需手动 Span**：依赖线程池 `ContextPropagatingTaskDecorator` 自动传播，业务代码零侵入。
 - **零侵入成本**：只需 OTLP 配置 + `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` 依赖，Spring AI 自动插桩即可工作。
 
+![image-20260821223757850](README.assets/image-20260821223757850.png)
+
+![image-20260821220752798](README.assets/image-20260821220752798.png)
+
 ---
 
 ## 常见问题
@@ -454,14 +470,3 @@ management:
 - **Langfuse 一直 Waiting for first trace**：确认 LLM 调用已发生（真实 Key 或演示模式都会调用 ChatClient）；若配置了手动 Span 又想移除，确保线程池已配 `ContextPropagatingTaskDecorator`。
 - **MySQL 版本**：连接串含 `characterEncoding=utf8&serverTimezone=Asia/Shanghai`，需 MySQL 8.x。MyBatis-Plus 默认开启逻辑删除（`t_resume.deleted`），建表脚本已包含对应字段。
 
----
-
-## 生产化建议
-
-- **真正挂起 Graph**：当前人机协同采用「节点内决策 + 服务端恢复」；如需框架级暂停，可改用 `InterruptableAction` 的 `interrupt/interruptAfter` 钩子。
-- **后置流程扩展**：背调 / 面试安排 / Offer 建议等复核后流程，直接追加到 `ResumeReviewPostGraph` 子图，无需改动 `approve` 逻辑。
-- **OCR 服务**：`ParseResumeAction` 目前支持 PDF/文本解析；扫描件可替换为阿里云文档智能 / 百度 OCR。
-- **观测告警**：Langfuse 已接入，可配置 trace 采样率、错误率告警，关注 LLM 调用成本与延迟。
-- **多实例**：SSE 事件经 Redis Pub/Sub 广播，后端可水平扩展，任意实例都能向客户端推送。
-- **安全加固**：`SaTokenConfig` 目前对 SSE / 上传接口开放，生产环境应改为 Token 参数校验（`?satoken=xxx`）。
-- **密钥管理**：敏感配置（DashScope / Langfuse / 数据库口令 / 演示账号密码）已全部环境变量化，`.env` 已被 gitignore；生产环境建议结合 K8s Secret / Vault / 云厂商 KMS 注入同名环境变量，无需改代码。
