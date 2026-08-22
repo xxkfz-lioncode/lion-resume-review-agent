@@ -3,6 +3,7 @@ package com.lion.resume.controller;
 import com.lion.resume.common.R;
 import com.lion.resume.dto.ApproveRequest;
 import com.lion.resume.dto.StartReviewRequest;
+import com.lion.resume.service.GraphExportService;
 import com.lion.resume.service.ReviewTaskService;
 import com.lion.resume.sse.SseEmitterManager;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ import java.util.Map;
 public class ReviewController {
 
     private final ReviewTaskService reviewTaskService;
+    private final GraphExportService graphExportService;
     private final SseEmitterManager sseEmitterManager;
 
     /**
@@ -118,6 +120,19 @@ public class ReviewController {
     @GetMapping("/topology")
     public R<Map<String, Object>> topology() {
         return R.ok(reviewTaskService.topology());
+    }
+
+    /**
+     * 导出完整执行图（框架 GraphRepresentation 生成）
+     * <p>基于 Mermaid / PlantUML 文本，前端可静态渲染整个执行流程
+     * （含主图与 HR 复核后置子图），也可用于文档/分享。
+     *
+     * @param format 图格式：mermaid（默认）| plantuml
+     * @return {@code {main: 主图文本, post: 后置子图文本}}
+     */
+    @GetMapping("/graph")
+    public R<Map<String, String>> graph(@RequestParam(defaultValue = "mermaid") String format) {
+        return R.ok(graphExportService.graphText(format));
     }
 
     /**

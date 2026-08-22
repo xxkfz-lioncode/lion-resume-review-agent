@@ -1,10 +1,13 @@
 <script setup>
 import { computed, watch, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
+import mermaid from 'mermaid'
 import StatusNode from './StatusNode.vue'
 import { store } from '../store'
+import api from '../api'
 
 const props = defineProps({
   topology: { type: Object, default: null }
@@ -12,6 +15,47 @@ const props = defineProps({
 
 const nodeTypes = { status: StatusNode }
 
+// ---------- 视图切换：实时追踪 | 完整流程图 ----------
+const viewMode = ref('live')
+const graphLoading = ref(false)
+const graphError = ref('')
+const graphMainSvg = ref('')
+const graphPostSvg = ref('')
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'neutral',
+  securityLevel: 'loose',
+  flowchart: { curve: 'basis' }
+})
+
+let graphSeq = 0
+async function renderMermaid(text) {
+  const id = `fullgraph-${Date.now()}-${graphSeq++}`
+  const { svg } = await mermaid.render(id, text)
+  return svg
+}
+
+async function loadFullGraph() {
+  graphLoading.value = true
+  graphError.value = ''
+  try {
+    const { main, post } = await api.get('/review/graph?format=mermaid')
+    graphMainSvg.value = await renderMermaid(main)
+    graphPostSvg.value = post ? await renderMermaid(post) : ''
+  } catch (e) {
+    graphError.value = e.message
+    ElMessage.error('流程图加载失败: ' + e.message)
+  } finally {
+    graphLoading.value = false
+  }
+}
+
+watch(viewMode, (v) => {
+  if (v === 'full' && !graphMainSvg.value) loadFullGraph()
+})
+
+// ---------- 实时追踪视图（Vue Flow） ----------
 // 节点布局坐标（流程管线样式）
 const LAYOUT = {
   __START__: { x: 200, y: 0 },
@@ -74,29 +118,59 @@ watch(
   <div class="flow-panel">
     <div class="panel-header">
       <span class="panel-title">流程追踪面板</span>
+      <el-radio-group v-model="viewMode" size="small">
+        <el-radio-button value="live">实时追踪</el-radio-button>
+        <el-radio-button value="full">完整流程图</el-radio-button>
+      </el-radio-group>
       <el-tag v-if="store.taskId" size="small" type="info">task: {{ store.taskId.slice(0, 8) }}</el-tag>
     </div>
-    <div class="progress-row">
-      <div class="progress-bar" style="flex: 1">
-        <div class="progress-fill" :style="{ width: store.progress + '%' }"></div>
+
+    <!-- 实时追踪视图：SSE 驱动节点状态高亮 -->
+    <template v-if="viewMode === 'live'">
+      <div class="progress-row">
+        <div class="progress-bar" style="flex: 1">
+          <div class="progress-fill" :style="{ width: store.progress + '%' }"></div>
+        </div>
+        <span class="progress-text">{{ store.progress }}%</span>
       </div>
-      <span class="progress-text">{{ store.progress }}%</span>
-    </div>
-    <div class="flow-canvas">
-      <VueFlow
-        v-if="nodes.length"
-        :nodes="nodes"
-        :edges="edges"
-        :node-types="nodeTypes"
-        :fit-view-on-init="true"
-        :min-zoom="0.3"
-        :max-zoom="1.5"
-        :default-viewport="{ zoom: 0.8 }"
+      <div class="flow-canvas">
+        <VueFlow
+          v-if="nodes.length"
+          :nodes="nodes"
+          :edges="edges"
+          :node-types="nodeTypes"
+          :fit-view-on-init="true"
+          :min-zoom="0.3"
+          :max-zoom="1.5"
+          :default-viewport="{ zoom: 0.8 }"
+        >
+          <Background pattern-color="#e5e7eb" :gap="20" />
+          <Controls />
+        </VueFlow>
+        <el-empty v-else description="等待创建审查任务…" />
+      </div>
+    </template>
+
+    <!-- 完整流程图视图：框架 GraphRepresentation 生成的 Mermaid 静态图 -->
+    <div v-else class="full-graph">
+      <el-skeleton v-if="graphLoading" :rows="6" animated />
+      <el-empty
+        v-else-if="graphError"
+        :description="'流程图加载失败：' + graphError"
       >
-        <Background pattern-color="#e5e7eb" :gap="20" />
-        <Controls />
-      </VueFlow>
-      <el-empty v-else description="等待创建审查任务…" />
+        <el-button size="small" @click="loadFullGraph">重试</el-button>
+      </el-empty>
+      <template v-else>
+        <div class="graph-section">
+          <div class="graph-title">主流程 · 简历审查工作流</div>
+          <div class="graph-svg" v-html="graphMainSvg"></div>
+        </div>
+        <div class="graph-section">
+          <div class="graph-title">后置子图 · HR 复核确认后</div>
+          <div class="graph-svg" v-html="graphPostSvg"></div>
+        </div>
+        <div class="graph-tip">注：完整图为静态展示（含 START/END 与全部条件边），实时执行状态请切换到「实时追踪」。</div>
+      </template>
     </div>
   </div>
 </template>
@@ -115,12 +189,14 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
 }
 .panel-title {
   font-size: 16px;
   font-weight: 600;
   color: #303133;
+  flex-shrink: 0;
 }
 .progress-row {
   display: flex;
@@ -141,5 +217,35 @@ watch(
   border-radius: 10px;
   overflow: hidden;
   background: #fafbfc;
+}
+/* 完整流程图视图 */
+.full-graph {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.graph-section {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 12px;
+}
+.graph-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+  margin-bottom: 8px;
+}
+.graph-svg :deep(svg) {
+  max-width: 100%;
+  height: auto;
+}
+.graph-tip {
+  font-size: 12px;
+  color: #909399;
+  padding: 4px 2px;
 }
 </style>
