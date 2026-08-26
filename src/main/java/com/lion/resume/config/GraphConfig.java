@@ -4,6 +4,7 @@ import com.alibaba.cloud.ai.graph.KeyStrategy;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;
 import com.alibaba.cloud.ai.graph.state.strategy.AppendStrategy;
 import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
+import com.lion.resume.graph.strategy.CustomStrategy;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -41,6 +42,8 @@ public class GraphConfig {
         map.put("warnings", new AppendStrategy());
         // 综合评分：单值覆盖（SynthesisAction 与 GenerateReportAction 串行写入，值一致）
         map.put("overall_score", new ReplaceStrategy());
+        // 自定义策略
+        map.put("custom", new CustomStrategy());
         return map;
     };
 }
