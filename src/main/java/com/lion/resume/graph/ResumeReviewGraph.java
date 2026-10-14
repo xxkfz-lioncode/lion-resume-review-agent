@@ -1,8 +1,10 @@
 package com.lion.resume.graph;
 
 import com.alibaba.cloud.ai.graph.CompiledGraph;
-import com.alibaba.cloud.ai.graph.KeyStrategy;
+import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.StateGraph;
+import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
+import com.alibaba.cloud.ai.graph.checkpoint.config.SaverConfig;
 import com.lion.resume.common.constant.GraphNodes;
 import com.lion.resume.config.GraphConfig;
 import com.lion.resume.graph.action.CultureScoringAction;
@@ -46,8 +48,20 @@ public class ResumeReviewGraph {
     private final HumanReviewAction humanReviewAction;
     private final GenerateReportAction generateReportAction;
 
+    /**
+     * 编译主图。
+     *
+     * <p>关键：注入 {@link BaseCheckpointSaver}，使 Graph 具备「中断 → 持久化 → 恢复」能力。
+     * 人工复核采用 {@code InterruptableAction#interruptAfter} 动态中断（方案 B）：
+     * 节点执行后按评分结果决定是否返回 {@code InterruptionMetadata}，
+     * 因此无需在此处静态配置 interruptBefore（否则所有任务都会无条件中断）。
+     *
+     * <p>关于 releaseThread：保持默认（不释放线程）。HR 可能数小时后才确认，
+     * 释放线程后 resume 需依赖 getActiveThreadId 重新定位，存在兼容风险；
+     * 不释放则由 TTL 自动回收，恢复链路更可靠。
+     */
     @Bean
-    public CompiledGraph resumeReviewCompiledGraph() throws Exception {
+    public CompiledGraph resumeReviewCompiledGraph(BaseCheckpointSaver checkpointSaver) throws Exception {
         StateGraph workflow = new StateGraph(GraphConfig.keyStrategyFactory)
                 .addNode(GraphNodes.PARSE, parseResumeAction)
                 .addNode(GraphNodes.SKILL, skillScoringAction)
@@ -71,6 +85,8 @@ public class ResumeReviewGraph {
                 .addEdge(GraphNodes.HUMAN_REVIEW, GraphNodes.GENERATE_REPORT)
                 .addEdge(GraphNodes.GENERATE_REPORT, END);
 
-        return workflow.compile();
+        return workflow.compile(CompileConfig.builder()
+                .saverConfig(SaverConfig.builder().register(checkpointSaver).build())
+                .build());
     }
 }

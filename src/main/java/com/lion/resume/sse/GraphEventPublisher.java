@@ -1,6 +1,6 @@
 package com.lion.resume.sse;
 
-import com.alibaba.fastjson2.JSON;
+import cn.hutool.json.JSONUtil;
 import com.lion.resume.config.RedisPubSubConfig;
 import com.lion.resume.dto.GraphStatusEvent;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +25,7 @@ public class GraphEventPublisher {
         boolean published = false;
         try {
             stringRedisTemplate.convertAndSend(RedisPubSubConfig.GRAPH_EVENT_CHANNEL,
-                    JSON.toJSONString(event));
+                    JSONUtil.toJsonStr(event));
             published = true;
         } catch (Exception e) {
             log.warn("Redis 广播 Graph 事件失败，降级为本机直推: {}", e.getMessage());

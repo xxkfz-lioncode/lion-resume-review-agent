@@ -15,13 +15,14 @@
     <artifactId>resume-review</artifactId>
     <version>1.0.0</version>
     <name>resume-review</name>
-    <description>企业招聘简历审查系统 - Spring AI Alibaba Graph 工作流</description>
+    <description>AI 招聘审查智能体 - Spring AI Alibaba Graph 多智能体工作流</description>
 
     <properties>
         <java.version>17</java.version>
         <spring-ai-alibaba.version>1.1.2.3</spring-ai-alibaba.version>
         <mybatis-plus.version>3.5.12</mybatis-plus.version>
         <sa-token.version>1.39.0</sa-token.version>
+        <redisson.version>3.52.0</redisson.version>
     </properties>
 
     <dependencies>
@@ -69,7 +70,7 @@
             <version>${sa-token.version}</version>
         </dependency>
 
-        <!-- ========== Redis（缓存 Graph 执行状态 + SSE 事件总线） ========== -->
+        <!-- ========== Redis（缓存 + SSE 事件总线） ========== -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
@@ -77,6 +78,18 @@
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-pool2</artifactId>
+        </dependency>
+
+        <!-- ========== Redisson：Graph Checkpoint 持久化 ==========
+             官方 Human-in-the-Loop（InterruptableAction + updateState + resume）依赖
+             BaseCheckpointSaver；RedisSaver 底层必须使用 RedissonClient。
+             注意：此处只引 redisson 核心包（不用 redisson-spring-boot-starter），
+             避免其 RedissonAutoConfiguration 替换掉 Lettuce 的 RedisConnectionFactory，
+             从而影响 StringRedisTemplate / Sa-Token 的既有行为。 -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <version>${redisson.version}</version>
         </dependency>
 
         <!-- ========== Milvus 向量数据库（Spring AI 标准 VectorStore，历史人才向量检索） ========== -->

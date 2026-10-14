@@ -4,6 +4,7 @@ import com.alibaba.cloud.ai.graph.KeyStrategy;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;
 import com.alibaba.cloud.ai.graph.state.strategy.AppendStrategy;
 import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
+import com.lion.resume.common.constant.GraphStateKeys;
 import com.lion.resume.graph.strategy.CustomStrategy;
 
 import java.util.HashMap;
@@ -14,19 +15,15 @@ import java.util.Map;
  *
  * <p>定义全局状态 {@code OverAllState} 中各状态键的合并策略：
  * 节点 {@code apply()} 返回的 Map 会按此处的策略合并进全局状态。
- * 未在此注册的键默认走 {@link ReplaceStrategy}（后写覆盖先写）。
- *
- * <pre>
- * 键名         策略                说明
- * warnings     AppendStrategy      多个节点累积写入，追加到 List（去重合并）
- * overall_score ReplaceStrategy    单值字段，后写覆盖先写
- * </pre>
+ * 键名统一取自 {@link GraphStateKeys}，策略只有三类：
+ * {@link AppendStrategy}（追加合并）、{@link ReplaceStrategy}（单值覆盖）、
+ * {@link CustomStrategy}（自定义规则）。
  */
 public class GraphConfig {
 
     /**
      * 状态键合并策略工厂（{@link KeyStrategyFactory}）
-     * <p>供 {@code ResumeReviewGraph} / {@code ResumeReviewPostGraph} 构造
+     * <p>供 {@code ResumeReviewGraph} 构造
      * {@code StateGraph} 时传入：{@code new StateGraph(keyStrategyFactory)}。
      *
      * <ul>
@@ -38,12 +35,38 @@ public class GraphConfig {
      */
     public static KeyStrategyFactory keyStrategyFactory = () -> {
         Map<String, KeyStrategy> map = new HashMap<>();
-        // 多个节点累积写入的警告/提示列表（追加合并）
-        map.put("warnings", new AppendStrategy());
-        // 综合评分：单值覆盖（SynthesisAction 与 GenerateReportAction 串行写入，值一致）
-        map.put("overall_score", new ReplaceStrategy());
-        // 自定义策略
-        map.put("custom", new CustomStrategy());
+
+        // 追加合并：多个节点累积写入的告警/提示列表
+        map.put(GraphStateKeys.WARNINGS, new AppendStrategy());
+        // 自定义合并规则
+        map.put(GraphStateKeys.CUSTOM, new CustomStrategy());
+
+        // 重要：业务字段必须在此注册！Checkpoint.updateState（官方 HIL 的 updateState/resume 路径）
+        // 只保留注册过的键，未注册的键会在中断/恢复往返中被丢弃，
+        // 恢复后 generate_report 就会取不到 taskId/resumeId 而失败。
+        replace(map,
+                GraphStateKeys.TASK_ID,
+                GraphStateKeys.RESUME_ID,
+                GraphStateKeys.JOB_DESCRIPTION,
+                GraphStateKeys.RESUME_CONTENT,
+                GraphStateKeys.RESUME_TEXT,
+                GraphStateKeys.RADAR_DATA,
+                GraphStateKeys.OVERALL_SCORE,
+                GraphStateKeys.DIAGNOSIS_SUMMARY,
+                GraphStateKeys.NEEDS_HUMAN_REVIEW,
+                GraphStateKeys.APPROVED,
+                GraphStateKeys.HR_COMMENT,
+                GraphStateKeys.HR_ADJUSTED_SCORES,
+                GraphStateKeys.REVIEW_REASON,
+                GraphStateKeys.REPORT_READY,
+                GraphStateKeys.REPORT_ID);
         return map;
     };
+
+    /** 单值覆盖类字段统一注册（等价于逐个 {@code new ReplaceStrategy()}，只是省掉重复代码） */
+    private static void replace(Map<String, KeyStrategy> map, String... keys) {
+        for (String key : keys) {
+            map.put(key, new ReplaceStrategy());
+        }
+    }
 }

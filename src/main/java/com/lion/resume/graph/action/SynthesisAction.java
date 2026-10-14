@@ -1,8 +1,9 @@
 package com.lion.resume.graph.action;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
-import com.alibaba.fastjson2.JSON;
+import cn.hutool.json.JSONUtil;
 import com.lion.resume.common.constant.GraphNodes;
+import com.lion.resume.common.constant.GraphStateKeys;
 import com.lion.resume.component.TaskProgressService;
 import com.lion.resume.graph.ResumeReviewProps;
 import com.lion.resume.service.LlmService;
@@ -39,9 +40,11 @@ public class SynthesisAction extends BaseTrackingAction {
     protected Map<String, Object> doExecute(OverAllState state) {
         Map<String, Object> data = state.data();
 
-        double skill = scoreValue(data.get("skill_score"), "skill_match");
-        double project = scoreValue(data.get("project_score"), "project_experience");
-        double culture = scoreValue(data.get("culture_score"), "culture_fit");
+        // 键名必须与 AbstractScoringAction 写入时一致（scoreKey = 节点ID + "_score"），
+        // 原来写成 "skill_score" 取不到值，三个并行维度会恒为兜底 3.5
+        double skill = scoreValue(data.get(GraphStateKeys.scoreKey(GraphNodes.SKILL)), "skill_match");
+        double project = scoreValue(data.get(GraphStateKeys.scoreKey(GraphNodes.PROJECT)), "project_experience");
+        double culture = scoreValue(data.get(GraphStateKeys.scoreKey(GraphNodes.CULTURE)), "culture_fit");
 
         // 其余三个维度 + 诊断摘要（LLM，失败时规则兜底）
         Map<String, Object> extra = extraDimensions(data);
@@ -62,9 +65,9 @@ public class SynthesisAction extends BaseTrackingAction {
         double overall = round((skill + project + culture + education + communication + growth) / 6.0);
 
         Map<String, Object> result = new HashMap<>();
-        result.put("radar_data", radar);
-        result.put("overall_score", overall);
-        result.put("diagnosis_summary", summary);
+        result.put(GraphStateKeys.RADAR_DATA, radar);
+        result.put(GraphStateKeys.OVERALL_SCORE, overall);
+        result.put(GraphStateKeys.DIAGNOSIS_SUMMARY, summary);
         return result;
     }
 
@@ -80,12 +83,12 @@ public class SynthesisAction extends BaseTrackingAction {
             String system = "你是资深招聘专家。基于候选人与岗位情况，进行六维雷达综合诊断："
                     + "对教育背景、沟通表达、潜力成长三个维度评分（0-5）并给出诊断摘要。"
                     + "返回 JSON：{education: 数字, communication: 数字, growth_potential: 数字, summary: 文字}。只输出 JSON。";
-            String user = "岗位描述：\n" + data.getOrDefault("job_description", "")
-                    + "\n\n候选人结构化信息：\n" + JSON.toJSONString(data.get("resume_content"))
+            String user = "岗位描述：\n" + data.getOrDefault(GraphStateKeys.JOB_DESCRIPTION, "")
+                    + "\n\n候选人结构化信息：\n" + JSONUtil.toJsonStr(data.get(GraphStateKeys.RESUME_CONTENT))
                     + "\n\n简历原文：\n" + AbstractScoringAction.truncate(
-                    String.valueOf(data.getOrDefault("resume_text", "")), 2000);
+                    String.valueOf(data.getOrDefault(GraphStateKeys.RESUME_TEXT, "")), 2000);
             String response = llmService.call(system, user);
-            Map<String, Object> parsed = JSON.parseObject(LlmService.extractJson(response), Map.class);
+            Map<String, Object> parsed = JSONUtil.parseObj(LlmService.extractJson(response));
             if (parsed != null && !parsed.isEmpty()) {
                 return parsed;
             }
@@ -93,8 +96,8 @@ public class SynthesisAction extends BaseTrackingAction {
             log.warn("综合诊断 LLM 调用失败，使用规则兜底: {}", e.getMessage());
         }
         // 规则兜底：根据简历文本关键词估算
-        String text = String.valueOf(data.getOrDefault("resume_text", "")).toLowerCase();
-        Map<String, Object> content = AbstractScoringAction.castMap(data.get("resume_content"));
+        String text = String.valueOf(data.getOrDefault(GraphStateKeys.RESUME_TEXT, "")).toLowerCase();
+        Map<String, Object> content = AbstractScoringAction.castMap(data.get(GraphStateKeys.RESUME_CONTENT));
         List<?> skills = content.get("skills") instanceof List<?> l ? l : List.of();
 
         double education = text.contains("博士") ? 4.5

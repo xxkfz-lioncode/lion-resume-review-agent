@@ -2,34 +2,32 @@ package com.lion.resume.graph.action;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.lion.resume.common.constant.GraphNodes;
-import com.lion.resume.common.enums.NodeStatus;
+import com.lion.resume.common.constant.GraphStateKeys;
 import com.lion.resume.component.TaskProgressService;
-import com.lion.resume.dto.GraphStatusEvent;
 import com.lion.resume.entity.ReviewReport;
 import com.lion.resume.graph.ResumeReviewProps;
 import com.lion.resume.service.ReviewReportService;
-import com.lion.resume.sse.GraphEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * End Node 前的报告生成节点：
- * - 若处于人工复核挂起状态（needs_human_review && !approved），则等待 HR 确认
- * - 否则调用 LLM 流式生成诊断报告，并通过 SSE chunk 推送实现打字机效果
+ * End Node 前的报告生成节点：调用 LLM 流式生成诊断报告，并通过 SSE chunk 推送实现打字机效果。
+ *
+ * <p>说明：人工复核已改由 {@code HumanReviewAction#interruptAfter} 真正中断，
+ * 本节点不会再在"未批准"状态下被空跑，因此无需保留等待分支。
+ * 若 approved=true，说明报告基于 HR 调整后的评分生成。
  */
 @Component
 public class GenerateReportAction extends BaseTrackingAction {
 
     private final ReviewReportService reportService;
-    private final GraphEventPublisher eventPublisher;
 
     public GenerateReportAction(TaskProgressService progressService, ResumeReviewProps props,
-                                ReviewReportService reportService, GraphEventPublisher eventPublisher) {
+                                ReviewReportService reportService) {
         super(progressService, props);
         this.reportService = reportService;
-        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -40,31 +38,18 @@ public class GenerateReportAction extends BaseTrackingAction {
     @Override
     protected Map<String, Object> doExecute(OverAllState state) {
         Map<String, Object> data = state.data();
-        String taskId = String.valueOf(data.get("taskId"));
-        boolean needsReview = Boolean.TRUE.equals(data.get("needs_human_review"));
-        boolean approved = Boolean.TRUE.equals(data.get("approved"));
-
-        if (needsReview && !approved) {
-            // 挂起：等待 HR 复核后再生成报告
-            eventPublisher.publish(GraphStatusEvent.builder()
-                    .type("node")
-                    .taskId(taskId)
-                    .node(nodeId())
-                    .status(NodeStatus.PENDING.getValue())
-                    .progress(88)
-                    .message("等待 HR 确认评分后生成报告")
-                    .timestamp(System.currentTimeMillis())
-                    .build());
-            return Map.of("report_ready", false);
-        }
+        // 不用 String.valueOf（null 会变成字符串 "null"，导致后续按 id 查询全部落空）
+        Object rawTaskId = data.get(GraphStateKeys.TASK_ID);
+        String taskId = (rawTaskId == null) ? null : String.valueOf(rawTaskId);
+        boolean approved = Boolean.TRUE.equals(data.get(GraphStateKeys.APPROVED));
 
         ReviewReport report = reportService.generate(taskId, data,
-                approved, approved ? String.valueOf(data.getOrDefault("hr_comment", "")) : "");
+                approved, approved ? String.valueOf(data.getOrDefault(GraphStateKeys.HR_COMMENT, "")) : "");
 
         Map<String, Object> result = new HashMap<>();
-        result.put("report_ready", true);
-        result.put("report_id", report.getId());
-        result.put("overall_score", report.getOverallScore());
+        result.put(GraphStateKeys.REPORT_READY, true);
+        result.put(GraphStateKeys.REPORT_ID, report.getId());
+        result.put(GraphStateKeys.OVERALL_SCORE, report.getOverallScore());
         return result;
     }
 }

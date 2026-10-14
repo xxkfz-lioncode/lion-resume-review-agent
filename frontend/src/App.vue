@@ -230,14 +230,14 @@ onBeforeUnmount(() => eventSource && eventSource.close())
   <!-- 未登录：独立登录页面 -->
   <LoginView v-if="!store.loggedIn" />
 
-  <!-- 已登录：审查系统主面板 -->
+  <!-- 已登录：智能体主面板 -->
   <div v-else class="app-shell">
     <!-- 顶部 -->
     <header class="app-header">
       <div class="header-left">
         <span class="logo">📄</span>
-        <span class="title">企业招聘简历审查系统</span>
-        <el-tag size="small" type="info" effect="plain">Spring AI Alibaba Graph 工作流</el-tag>
+        <span class="title">AI 招聘审查智能体</span>
+        <el-tag size="small" type="info" effect="plain">Spring AI Alibaba Graph 多智能体工作流</el-tag>
       </div>
       <div class="header-right">
         <el-tag v-if="store.taskId" :type="store.taskStatus === 'FAILED' ? 'danger' : 'primary'" effect="light">

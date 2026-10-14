@@ -1,6 +1,6 @@
 package com.lion.resume.sse;
 
-import com.alibaba.fastjson2.JSON;
+import cn.hutool.json.JSONUtil;
 import com.lion.resume.dto.GraphStatusEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -50,7 +50,7 @@ public class SseEmitterManager {
             return false;
         }
         try {
-            Map<String, Object> map = JSON.parseObject(JSON.toJSONString(event));
+            Map<String, Object> map = JSONUtil.parseObj(JSONUtil.toJsonStr(event));
             emitter.send(SseEmitter.event()
                     .name(event.getType() == null ? "message" : event.getType())
                     .id(String.valueOf(System.currentTimeMillis()))

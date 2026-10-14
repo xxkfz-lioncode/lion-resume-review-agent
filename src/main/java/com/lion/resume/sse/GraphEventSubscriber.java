@@ -1,6 +1,6 @@
 package com.lion.resume.sse;
 
-import com.alibaba.fastjson2.JSON;
+import cn.hutool.json.JSONUtil;
 import com.lion.resume.dto.GraphStatusEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +21,7 @@ public class GraphEventSubscriber implements MessageListener {
     @Override
     public void onMessage(Message message, byte[] pattern) {
         try {
-            GraphStatusEvent event = JSON.parseObject(new String(message.getBody()),
+            GraphStatusEvent event = JSONUtil.toBean(new String(message.getBody()),
                     GraphStatusEvent.class);
             boolean sent = emitterManager.send(event.getTaskId(), event);
             if (!sent) {

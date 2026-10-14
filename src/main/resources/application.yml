@@ -93,7 +93,12 @@ resume:
   # LLM 节点重试间隔(毫秒)
   llm-retry-delay-ms: 1500
   # 六维评分中，均值低于该值判定为"边缘候选"，触发人工复核
-  borderline-score: 6
+  # 评分为 0-5 分制，阈值必须 <= 5（超过 5 会导致所有任务都判定为边缘候选）
+  # 调大=更容易触发人工复核；5.0 表示仅满分免复核（几乎必然触发，适合验证 HIL 链路）
+  # 调试完建议调回真实业务阈值（如 3.0~3.5）
+  borderline-score: 5.0
+  # Graph Checkpoint 保留时长(小时)：需覆盖 HR 复核的响应周期，过期后无法恢复中断的任务
+  checkpoint-ttl-hours: 72
   # 模拟解析开关：true 时用本地规则解析简历(不依赖 OCR 服务)，便于本地快速体验
   mock-parse: true
 

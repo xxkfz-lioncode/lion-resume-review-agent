@@ -1,12 +1,15 @@
 package com.lion.resume.service;
 
-import com.alibaba.fastjson2.JSON;
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.lion.resume.common.constant.GraphNodes;
+import com.lion.resume.common.constant.GraphStateKeys;
 import com.lion.resume.common.enums.NodeStatus;
 import com.lion.resume.dto.GraphStatusEvent;
 import com.lion.resume.entity.ReviewReport;
+import com.lion.resume.entity.ReviewTask;
 import com.lion.resume.mapper.ReviewReportMapper;
+import com.lion.resume.mapper.ReviewTaskMapper;
 import com.lion.resume.sse.GraphEventPublisher;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -32,6 +35,7 @@ import java.util.Map;
 public class ReviewReportService {
 
     private final ReviewReportMapper reportMapper;
+    private final ReviewTaskMapper taskMapper;
     private final LlmService llmService;
     private final GraphEventPublisher eventPublisher;
 
@@ -44,11 +48,35 @@ public class ReviewReportService {
     @Value("${spring.ai.dashscope.api-key:}")
     private String apiKey;
 
-    public ReviewReportService(ReviewReportMapper reportMapper, LlmService llmService,
-                               GraphEventPublisher eventPublisher) {
+    public ReviewReportService(ReviewReportMapper reportMapper, ReviewTaskMapper taskMapper,
+                               LlmService llmService, GraphEventPublisher eventPublisher) {
         this.reportMapper = reportMapper;
+        this.taskMapper = taskMapper;
         this.llmService = llmService;
         this.eventPublisher = eventPublisher;
+    }
+
+    /**
+     * 安全解析 resumeId：兼容 null、字符串 "null"、Number、数字字符串。
+     * 无法解析时返回 null，交由调用方走 DB 兜底，避免 NumberFormatException。
+     */
+    private static Long parseResumeId(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Number n) {
+            return n.longValue();
+        }
+        String s = String.valueOf(raw).trim();
+        if (s.isEmpty() || "null".equalsIgnoreCase(s)) {
+            return null;
+        }
+        try {
+            return Long.valueOf(s);
+        } catch (NumberFormatException e) {
+            log.warn("resumeId 解析失败: {}", s);
+            return null;
+        }
     }
 
     /**
@@ -58,13 +86,22 @@ public class ReviewReportService {
      */
     public ReviewReport generate(String taskId, Map<String, Object> stateData,
                                  boolean approved, String hrComment) {
-        Long resumeId = Long.valueOf(String.valueOf(stateData.get("resumeId")));
-        String jobDesc = String.valueOf(stateData.getOrDefault("job_description", ""));
-        Map<String, Object> resumeContent = castMap(stateData.get("resume_content"));
-        String resumeText = String.valueOf(stateData.getOrDefault("resume_text", ""));
-        List<?> radarData = stateData.get("radar_data") instanceof List<?> l ? l : List.of();
-        double overall = toDouble(stateData.get("overall_score"), 0);
-        boolean needsReview = Boolean.TRUE.equals(stateData.get("needs_human_review"));
+        // resumeId 解析：state 缺失时（如 Checkpoint 反序列化丢失字段）从任务表反查兜底，
+        // 避免 Long.valueOf("null") 抛 NumberFormatException 导致节点失败
+        Long resumeId = parseResumeId(stateData.get(GraphStateKeys.RESUME_ID));
+        if (resumeId == null && taskId != null && !taskId.isBlank()) {
+            ReviewTask t = taskMapper.selectById(taskId);
+            resumeId = (t != null) ? t.getResumeId() : null;
+        }
+        if (resumeId == null) {
+            throw new IllegalStateException("无法确定 resumeId，taskId=" + taskId);
+        }
+        String jobDesc = String.valueOf(stateData.getOrDefault(GraphStateKeys.JOB_DESCRIPTION, ""));
+        Map<String, Object> resumeContent = castMap(stateData.get(GraphStateKeys.RESUME_CONTENT));
+        String resumeText = String.valueOf(stateData.getOrDefault(GraphStateKeys.RESUME_TEXT, ""));
+        List<?> radarData = stateData.get(GraphStateKeys.RADAR_DATA) instanceof List<?> l ? l : List.of();
+        double overall = toDouble(stateData.get(GraphStateKeys.OVERALL_SCORE), 0);
+        boolean needsReview = Boolean.TRUE.equals(stateData.get(GraphStateKeys.NEEDS_HUMAN_REVIEW));
 
         String system = "你是资深 HR 招聘专家与职业规划顾问。基于六维雷达评分与候选人简历，"
                 + "输出一份结构化 Markdown 简历审查报告，包含：综合评分、六维分析、核心优势、风险提示、面试建议。"
@@ -106,15 +143,15 @@ public class ReviewReportService {
             report.setResumeId(resumeId);
             report.setCreateTime(LocalDateTime.now());
         }
-        report.setRadarData(JSON.toJSONString(radarData));
+        report.setRadarData(JSONUtil.toJsonStr(radarData));
         report.setOverallScore(BigDecimal.valueOf(Math.round(overall * 10) / 10.0));
         report.setSummary(extractSummary(detailReport));
         report.setDetailReport(detailReport);
         report.setNeedsHumanReview(needsReview);
         if (approved) {
             report.setHrReviewComment(hrComment);
-            Object adj = stateData.get("hr_adjusted_scores");
-            report.setHrAdjustedScores(adj == null ? null : JSON.toJSONString(adj));
+            Object adj = stateData.get(GraphStateKeys.HR_ADJUSTED_SCORES);
+            report.setHrAdjustedScores(adj == null ? null : JSONUtil.toJsonStr(adj));
         }
         report.setUpdateTime(LocalDateTime.now());
         if (create) {
@@ -175,8 +212,8 @@ public class ReviewReportService {
                                boolean needsReview, boolean approved, String hrComment) {
         StringBuilder sb = new StringBuilder();
         sb.append("岗位描述：\n").append(jobDesc == null ? "" : jobDesc).append("\n\n");
-        sb.append("候选人结构化信息：\n").append(JSON.toJSONString(resume)).append("\n\n");
-        sb.append("六维雷达评分：\n").append(JSON.toJSONString(radarData)).append("\n\n");
+        sb.append("候选人结构化信息：\n").append(JSONUtil.toJsonStr(resume)).append("\n\n");
+        sb.append("六维雷达评分：\n").append(JSONUtil.toJsonStr(radarData)).append("\n\n");
         sb.append("综合评分：").append(overall).append("/5\n\n");
         if (needsReview) {
             sb.append("该候选人经过 HR 人工复核，");

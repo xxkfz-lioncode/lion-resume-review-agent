@@ -1,6 +1,5 @@
 package com.lion.resume.component;
 
-import com.lion.resume.cache.GraphStateCache;
 import com.lion.resume.common.constant.GraphNodes;
 import com.lion.resume.common.enums.NodeStatus;
 import com.lion.resume.dto.GraphStatusEvent;
@@ -18,8 +17,10 @@ import java.util.Map;
 /**
  * 任务进度上报组件（被 Graph 各节点调用）：
  * 1. 节点开始/完成时更新数据库中的 current_node、progress
- * 2. 将 Graph 状态快照写入 Redis（缓存执行状态）
- * 3. 通过 SSE 推送节点状态事件
+ * 2. 通过 SSE 推送节点状态事件
+ *
+ * <p>说明：Graph 状态持久化已交由框架 Checkpoint（RedisSaver）负责，
+ * 本组件不再自行维护 Redis 状态快照，避免双写不一致。
  */
 @Slf4j
 @Component
@@ -28,9 +29,8 @@ public class TaskProgressService {
 
     private final ReviewTaskMapper taskMapper;
     private final GraphEventPublisher eventPublisher;
-    private final GraphStateCache stateCache;
 
-    public void onNodeStart(String taskId, String node, Map<String, Object> stateData) {
+    public void onNodeStart(String taskId, String node) {
         ReviewTask task = taskMapper.selectById(taskId);
         if (task != null) {
             task.setCurrentNode(node);
@@ -39,7 +39,6 @@ public class TaskProgressService {
             task.setUpdateTime(LocalDateTime.now());
             taskMapper.updateById(task);
         }
-        stateCache.saveState(taskId, stateData);
         eventPublisher.publish(GraphStatusEvent.builder()
                 .type("node")
                 .taskId(taskId)
@@ -52,13 +51,6 @@ public class TaskProgressService {
     }
 
     public void onNodeComplete(String taskId, String node, Map<String, Object> result) {
-        // 合并节点结果到 Redis 状态快照
-        Map<String, Object> snapshot = stateCache.loadState(taskId);
-        if (result != null) {
-            snapshot.putAll(result);
-        }
-        stateCache.saveState(taskId, snapshot);
-
         ReviewTask task = taskMapper.selectById(taskId);
         if (task != null && (task.getProgress() == null || task.getProgress() < GraphProgress.endProgress(node))) {
             task.setProgress(GraphProgress.endProgress(node));

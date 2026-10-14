@@ -1,7 +1,37 @@
-# 企业招聘简历审查系统（lion-resume-review-agent）
+<div align="center">
 
-基于 **Spring AI Alibaba Graph（状态机工作流）+ 阿里千问大模型 + SSE 流式通信 + Langfuse 可观测性** 的简历 AI 审查系统。
-前端通过「流程追踪面板」实时可视化 Graph 各节点的执行状态（进度条 / 节点高亮 / 打字机报告），支持历史报告管理、报告导出与重新审查。
+<h1>🦁 Lion Resume Review · AI 招聘审查智能体</h1>
+
+<p><strong>基于 Spring AI Alibaba Graph 的企业级招聘审查智能体 —— 多智能体工作流 · 并行评分 · 人机协同 · LLM 全链路可观测</strong></p>
+
+<p>
+  <img src="https://img.shields.io/badge/Java-17-007396?logo=openjdk&logoColor=white" alt="Java 17">
+  <img src="https://img.shields.io/badge/Spring%20Boot-3.5.4-6DB33F?logo=springboot&logoColor=white" alt="Spring Boot 3.5.4">
+  <img src="https://img.shields.io/badge/Spring%20AI%20Alibaba-1.1.2.3-6DB33F?logo=spring&logoColor=white" alt="Spring AI Alibaba">
+  <img src="https://img.shields.io/badge/DashScope-%E5%8D%83%E9%97%AE-615CED?logo=alibabacloud&logoColor=white" alt="DashScope 千问">
+  <img src="https://img.shields.io/badge/MySQL-8.x-4479A1?logo=mysql&logoColor=white" alt="MySQL 8.x">
+  <img src="https://img.shields.io/badge/Redis-7.x-DC382D?logo=redis&logoColor=white" alt="Redis 7.x">
+  <img src="https://img.shields.io/badge/Milvus-2.x-00A1EA?logo=milvus&logoColor=white" alt="Milvus 2.x">
+  <img src="https://img.shields.io/badge/Sa--Token-1.39.0-FF6F00?logo=springsecurity&logoColor=white" alt="Sa-Token">
+  <img src="https://img.shields.io/badge/SSE-EventSource-FF6F00" alt="SSE">
+  <img src="https://img.shields.io/badge/Langfuse-OTel%20Observability-7B61FF" alt="Langfuse">
+  <img src="https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white" alt="Vue 3.5">
+</p>
+
+<p>
+  <a href="#主要功能点">功能总览</a> ·
+  <a href="#界面预览">界面预览</a> ·
+  <a href="#技术栈">技术栈</a> ·
+  <a href="#快速启动">快速开始</a> ·
+  <a href="#graph-工作流设计">核心设计</a> ·
+  <a href="#环境变量配置">环境变量</a>
+</p>
+
+</div>
+
+---
+
+基于 **Spring AI Alibaba Graph（状态机工作流）+ 阿里千问大模型 + SSE 流式通信 + Langfuse 可观测性** 的企业招聘简历 AI 审查智能体。系统以 **7 节点状态机**编排「简历解析 → 技能 / 项目 / 文化契合度并行评分 → 综合诊断 → 人工复核 → 报告生成」全流程，前端通过 **流程追踪面板** 实时可视化各节点执行状态（进度条 / 节点高亮 / 打字机报告 / ECharts 六维雷达图）；支持 **Human-in-the-Loop 人机协同复核**、历史报告管理、报告导出与重新审查，并基于 **Redis 状态快照** 实现断点恢复、**Milvus 向量检索** 实现历史相似人才召回、**OTel + Langfuse** 实现 LLM 调用全链路可观测。
 
 ---
 
@@ -13,13 +43,13 @@
 - [Graph 工作流设计](#graph-工作流设计)
 - [项目结构](#项目结构)
 - [快速启动](#快速启动)
+- [界面预览](#界面预览)
 - [环境变量配置](#环境变量配置)
 - [API 一览](#api-一览)
 - [SSE 事件协议](#sse-事件协议)
 - [核心实现机制](#核心实现机制)
 - [Langfuse 可观测性](#langfuse-可观测性)
 - [常见问题](#常见问题)
-- [生产化建议](#生产化建议)
 
 ---
 
@@ -305,15 +335,25 @@ npm run dev
 4. 若 AI 评分低于及格线，自动弹出「HR 人工复核」弹窗，调整评分后继续。
 5. 完成后在「历史报告」中查看 / 搜索 / 删除 / 重新审查 / 导出报告。
 
-### 6. 效果图
+---
+
+## 界面预览
+
+<div align="center">
+
+**发起审查 · 流程追踪面板 · 六维雷达图**
 
 ![image-20260821223521448](README.assets/image-20260821223521448.png)
 
+**流式报告与评分详情**
+
 ![image-20260821223538235](README.assets/image-20260821223538235.png)
+
+**历史报告管理（分页 / 搜索 / 导出 / 重新审查）**
 
 ![image-20260821223908796](README.assets/image-20260821223908796.png)
 
-
+</div>
 
 ---
 

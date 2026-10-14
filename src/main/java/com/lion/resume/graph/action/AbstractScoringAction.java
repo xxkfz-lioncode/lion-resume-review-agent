@@ -1,7 +1,8 @@
 package com.lion.resume.graph.action;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
-import com.alibaba.fastjson2.JSON;
+import cn.hutool.json.JSONUtil;
+import com.lion.resume.common.constant.GraphStateKeys;
 import com.lion.resume.component.TaskProgressService;
 import com.lion.resume.graph.ResumeReviewProps;
 import com.lion.resume.service.LlmService;
@@ -38,25 +39,26 @@ public abstract class AbstractScoringAction extends BaseTrackingAction {
     @Override
     protected Map<String, Object> doExecute(OverAllState state) {
         Map<String, Object> data = state.data();
-        Map<String, Object> resume = castMap(data.get("resume_content"));
-        String jobDesc = String.valueOf(data.getOrDefault("job_description", ""));
-        String resumeText = String.valueOf(data.getOrDefault("resume_text", ""));
+        Map<String, Object> resume = castMap(data.get(GraphStateKeys.RESUME_CONTENT));
+        String jobDesc = String.valueOf(data.getOrDefault(GraphStateKeys.JOB_DESCRIPTION, ""));
+        String resumeText = String.valueOf(data.getOrDefault(GraphStateKeys.RESUME_TEXT, ""));
 
         String system = "你是资深招聘专家，负责评估候选人" + reviewFocus()
                 + "。请返回 JSON：{score: 0-5 的数字, dimensions: {"
                 + dimensionKey() + ": 0-5 的数字}, analysis: 简短分析, reasons: [理由数组]}。只输出 JSON。";
         String user = "岗位描述：\n" + jobDesc
-                + "\n\n候选人简历：\n" + JSON.toJSONString(resume)
+                + "\n\n候选人简历：\n" + JSONUtil.toJsonStr(resume)
                 + "\n\n简历原文：\n" + truncate(resumeText, 3000);
 
         Map<String, Object> parsed = new HashMap<>();
         try {
             String response = llmService.call(system, user);
-            parsed = JSON.parseObject(LlmService.extractJson(response), Map.class);
+            parsed = JSONUtil.parseObj(LlmService.extractJson(response));
         } catch (Exception e) {
             log.warn("[{}] LLM 评分失败，使用兜底评分: {}", dimensionLabel(), e.getMessage());
         }
-        return Map.of(nodeId() + "_score", normalize(parsed));
+        // 键名统一由 GraphStateKeys.scoreKey 生成，SynthesisAction 读取时必须用同一方法
+        return Map.of(GraphStateKeys.scoreKey(nodeId()), normalize(parsed));
     }
 
     /**

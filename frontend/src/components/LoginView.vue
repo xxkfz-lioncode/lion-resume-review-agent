@@ -4,8 +4,8 @@
       <div class="login-logo">
         <el-icon :size="40" color="#409eff"><Avatar /></el-icon>
       </div>
-      <h1 class="login-title">AI 简历审查系统</h1>
-      <p class="login-subtitle">智能简历评估 · 岗位匹配 · 多维度诊断</p>
+      <h1 class="login-title">AI 招聘审查智能体</h1>
+      <p class="login-subtitle">多智能体协同 · 简历评估 · 岗位匹配 · 人工复核</p>
 
       <el-form class="login-form" label-position="top" @submit.prevent>
         <el-form-item>

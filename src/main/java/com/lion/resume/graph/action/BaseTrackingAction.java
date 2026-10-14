@@ -2,6 +2,7 @@ package com.lion.resume.graph.action;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.AsyncNodeAction;
+import com.lion.resume.common.constant.GraphStateKeys;
 import com.lion.resume.component.TaskProgressService;
 import com.lion.resume.graph.ResumeReviewProps;
 import lombok.extern.slf4j.Slf4j;
@@ -12,8 +13,8 @@ import java.util.concurrent.CompletableFuture;
 /**
  * 节点追踪基类（即"自定义切面"）：
  * 每个节点执行前后，向 OverAllState / Redis / SSE 注入当前进度与节点状态
- * - onStart: 推送 running 事件、更新任务进度、缓存状态快照
- * - onComplete: 推送 completed 事件、合并节点结果
+ * - onStart: 推送 running 事件、更新任务进度
+ * - onComplete: 推送 completed 事件（状态持久化由框架 Checkpoint 负责）
  * - onError: 推送 error / retrying 事件，并按配置自动重试（LLM 限流、网络抖动容错）
  */
 @Slf4j
@@ -33,14 +34,15 @@ public abstract class BaseTrackingAction implements AsyncNodeAction {
     @Override
     public CompletableFuture<Map<String, Object>> apply(OverAllState state) {
         Map<String, Object> data = state.data();
-        String taskId = String.valueOf(data.getOrDefault("taskId", "unknown"));
-        progressService.onNodeStart(taskId, nodeId(), data);
+        String taskId = String.valueOf(data.getOrDefault(GraphStateKeys.TASK_ID, "unknown"));
+        progressService.onNodeStart(taskId, nodeId());
 
         int attempt = 0;
         while (true) {
             try {
                 Map<String, Object> result = doExecute(state);
                 if (emitCompleteEvent(result)) {
+                    // 推送完成标志
                     progressService.onNodeComplete(taskId, nodeId(), result);
                 }
                 return CompletableFuture.completedFuture(result);
