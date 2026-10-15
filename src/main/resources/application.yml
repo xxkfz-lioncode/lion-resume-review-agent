@@ -51,8 +51,11 @@ spring:
           temperature: 0.7
           max-tokens: 4096
           multi-model: true # 关键：开启多模态端点
-    # Milvus 向量库（Spring AI 标准 VectorStore 自动配置；注释掉 client.host 即关闭）
+    # Milvus 向量库（Spring AI 标准 VectorStore 自动配置）
     vectorstore:
+      # 向量库类型开关：Milvus 自动装配的条件是 type=milvus（matchIfMissing=true，即不配就启用）
+      # 默认 milvus 保持原行为；设为 none 可彻底跳过 MilvusVectorStore 创建（不启 Milvus 时用）
+      type: ${VECTORSTORE_TYPE:milvus}
       milvus:
         client:
           host: ${MILVUS_HOST:127.0.0.1}

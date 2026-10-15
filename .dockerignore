@@ -1,0 +1,22 @@
+# 构建上下文瘦身（frontend 有 2w+ 文件，必须排除）
+.git/
+.gitignore
+.idea/
+.vscode/
+*.iml
+*.md
+README.assets/
+frontend/
+# target 保留 jar（镜像要 COPY），排除其余构建中间产物
+target/classes/
+target/test-classes/
+target/generated-sources/
+target/generated-test-sources/
+target/maven-status/
+target/surefire-reports/
+data/
+.env
+.env.example
+docker-compose.yml
+Dockerfile
+.dockerignore
