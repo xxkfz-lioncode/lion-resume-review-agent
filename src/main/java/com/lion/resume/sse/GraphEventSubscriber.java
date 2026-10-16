@@ -8,8 +8,10 @@ import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
+
 /**
- * Graph 事件订阅器：收到 Redis 广播后转发给本机连接的 SSE 客户端
+ * Graph event subscriber: forwards Redis broadcast events to local SSE clients.
  */
 @Slf4j
 @Component
@@ -21,7 +23,8 @@ public class GraphEventSubscriber implements MessageListener {
     @Override
     public void onMessage(Message message, byte[] pattern) {
         try {
-            GraphStatusEvent event = JSONUtil.toBean(new String(message.getBody()),
+            // Must decode with UTF-8; platform default (GBK on Windows) will corrupt Chinese characters.
+            GraphStatusEvent event = JSONUtil.toBean(new String(message.getBody(), StandardCharsets.UTF_8),
                     GraphStatusEvent.class);
             boolean sent = emitterManager.send(event.getTaskId(), event);
             if (!sent) {

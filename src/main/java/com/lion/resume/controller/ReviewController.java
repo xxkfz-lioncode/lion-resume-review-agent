@@ -1,7 +1,9 @@
 package com.lion.resume.controller;
 
 import com.lion.resume.common.R;
+import com.lion.resume.common.enums.NodeStatus;
 import com.lion.resume.dto.ApproveRequest;
+import com.lion.resume.dto.GraphStatusEvent;
 import com.lion.resume.dto.StartReviewRequest;
 import com.lion.resume.service.GraphExportService;
 import com.lion.resume.service.ReviewTaskService;
@@ -54,7 +56,7 @@ public class ReviewController {
     /**
      * SSE 订阅端点：前端通过 EventSource 监听节点状态
      */
-    @GetMapping(value = "/stream/{taskId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @GetMapping(value = "/stream/{taskId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE + ";charset=UTF-8")
     public SseEmitter stream(@PathVariable String taskId) {
         SseEmitter emitter = sseEmitterManager.register(taskId);
         // 连接建立后立即推送拓扑，供前端渲染流程面板
@@ -63,6 +65,22 @@ public class ReviewController {
                     .name("topology")
                     .id("topology-1")
                     .data(reviewTaskService.topology()));
+        } catch (Exception ignored) {
+        }
+        // 补发 __START__ 完成事件：startReview 时前端尚未建立 SSE 连接，原事件已丢失
+        try {
+            emitter.send(SseEmitter.event()
+                    .name("node")
+                    .id("start-" + System.currentTimeMillis())
+                    .data(GraphStatusEvent.builder()
+                            .type("node")
+                            .taskId(taskId)
+                            .node("__START__")
+                            .status(NodeStatus.COMPLETED.getValue())
+                            .progress(0)
+                            .message("Task started")
+                            .timestamp(System.currentTimeMillis())
+                            .build()));
         } catch (Exception ignored) {
         }
         return emitter;

@@ -1,9 +1,14 @@
 server:
   port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
 spring:
   config:
-    # ±¾µØ¿ª·¢£º´Ó¹¤³Ì¸ùÄ¿Â¼ .env ÎÄ¼ş¼ÓÔØ»·¾³±äÁ¿£¨ÒÑ gitignore£¬Ä£°å¼û .env.example£©
+    # æœ¬åœ°å¼€å‘ï¼šä»å·¥ç¨‹æ ¹ç›®å½• .env æ–‡ä»¶åŠ è½½ç¯å¢ƒå˜é‡ï¼ˆå·² gitignoreï¼Œæ¨¡æ¿è§ .env.exampleï¼‰
     import: optional:file:.env[.properties]
 
   application:
@@ -35,26 +40,26 @@ spring:
           max-idle: 8
           min-idle: 0
 
-  # ---------- SSE Ö§³Ö ----------
+  # ---------- SSE æ”¯æŒ ----------
   mvc:
     async:
       request-timeout: 30m
 
   ai:
-    # DashScope / Ç§ÎÊ´óÄ£ĞÍ
+    # DashScope / åƒé—®å¤§æ¨¡å‹
     dashscope:
-      # API Key ¾­»·¾³±äÁ¿×¢Èë£¨.env ÖĞ DASHSCOPE_API_KEY£©£¬²»Ğ´ËÀÔÚÅäÖÃÎÄ¼ş
+      # API Key ç»ç¯å¢ƒå˜é‡æ³¨å…¥ï¼ˆ.env ä¸­ DASHSCOPE_API_KEYï¼‰ï¼Œä¸å†™æ­»åœ¨é…ç½®æ–‡ä»¶
       api-key: ${DASHSCOPE_API_KEY:}
       chat:
         options:
           model: qwen3.8-max
           temperature: 0.7
           max-tokens: 4096
-          multi-model: true # ¹Ø¼ü£º¿ªÆô¶àÄ£Ì¬¶Ëµã
-    # Milvus ÏòÁ¿¿â£¨Spring AI ±ê×¼ VectorStore ×Ô¶¯ÅäÖÃ£©
+          multi-model: true # å…³é”®ï¼šå¼€å¯å¤šæ¨¡æ€ç«¯ç‚¹
+    # Milvus å‘é‡åº“ï¼ˆSpring AI æ ‡å‡† VectorStore è‡ªåŠ¨é…ç½®ï¼‰
     vectorstore:
-      # ÏòÁ¿¿âÀàĞÍ¿ª¹Ø£ºMilvus ×Ô¶¯×°ÅäµÄÌõ¼şÊÇ type=milvus£¨matchIfMissing=true£¬¼´²»Åä¾ÍÆôÓÃ£©
-      # Ä¬ÈÏ milvus ±£³ÖÔ­ĞĞÎª£»ÉèÎª none ¿É³¹µ×Ìø¹ı MilvusVectorStore ´´½¨£¨²»Æô Milvus Ê±ÓÃ£©
+      # å‘é‡åº“ç±»å‹å¼€å…³ï¼šMilvus è‡ªåŠ¨è£…é…çš„æ¡ä»¶æ˜¯ type=milvusï¼ˆmatchIfMissing=trueï¼Œå³ä¸é…å°±å¯ç”¨ï¼‰
+      # é»˜è®¤ milvus ä¿æŒåŸè¡Œä¸ºï¼›è®¾ä¸º none å¯å½»åº•è·³è¿‡ MilvusVectorStore åˆ›å»ºï¼ˆä¸å¯ Milvus æ—¶ç”¨ï¼‰
       type: ${VECTORSTORE_TYPE:milvus}
       milvus:
         client:
@@ -63,7 +68,7 @@ spring:
         database-name: default
         collection-name: lion_agent_resume
         embedding-dimension: 1024
-        # Ê×´ÎÆô¶¯×Ô¶¯½¨¿â½¨¼¯ºÏ£¨Ğè DashScope API Key ÒÑÅäÖÃ£©
+        # é¦–æ¬¡å¯åŠ¨è‡ªåŠ¨å»ºåº“å»ºé›†åˆï¼ˆéœ€ DashScope API Key å·²é…ç½®ï¼‰
         initialize-schema: true
 
 mybatis-plus:
@@ -77,36 +82,36 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
-# ---------- Sa-Token ¼øÈ¨ ----------
+# ---------- Sa-Token é‰´æƒ ----------
 sa-token:
   token-name: satoken
-  timeout: 2592000      # 30 Ìì
+  timeout: 2592000      # 30 å¤©
   active-timeout: -1
   is-concurrent: true
   is-share: true
   token-style: uuid
   is-log: true
 
-# ---------- ¼òÀúÉó²éÒµÎñÅäÖÃ ----------
+# ---------- ç®€å†å®¡æŸ¥ä¸šåŠ¡é…ç½® ----------
 resume:
-  # ÉÏ´«ÎÄ¼ş±£´æÄ¿Â¼
+  # ä¸Šä¼ æ–‡ä»¶ä¿å­˜ç›®å½•
   upload-dir: ./data/uploads
-  # LLM ½ÚµãÊ§°ÜÖØÊÔ´ÎÊı
+  # LLM èŠ‚ç‚¹å¤±è´¥é‡è¯•æ¬¡æ•°
   llm-retry-times: 3
-  # LLM ½ÚµãÖØÊÔ¼ä¸ô(ºÁÃë)
+  # LLM èŠ‚ç‚¹é‡è¯•é—´éš”(æ¯«ç§’)
   llm-retry-delay-ms: 1500
-  # ÁùÎ¬ÆÀ·ÖÖĞ£¬¾ùÖµµÍÓÚ¸ÃÖµÅĞ¶¨Îª"±ßÔµºòÑ¡"£¬´¥·¢ÈË¹¤¸´ºË
-  # ÆÀ·ÖÎª 0-5 ·ÖÖÆ£¬ãĞÖµ±ØĞë <= 5£¨³¬¹ı 5 »áµ¼ÖÂËùÓĞÈÎÎñ¶¼ÅĞ¶¨Îª±ßÔµºòÑ¡£©
-  # µ÷´ó=¸üÈİÒ×´¥·¢ÈË¹¤¸´ºË£»5.0 ±íÊ¾½öÂú·ÖÃâ¸´ºË£¨¼¸ºõ±ØÈ»´¥·¢£¬ÊÊºÏÑéÖ¤ HIL Á´Â·£©
-  # µ÷ÊÔÍê½¨Òéµ÷»ØÕæÊµÒµÎñãĞÖµ£¨Èç 3.0~3.5£©
+  # å…­ç»´è¯„åˆ†ä¸­ï¼Œå‡å€¼ä½äºè¯¥å€¼åˆ¤å®šä¸º"è¾¹ç¼˜å€™é€‰"ï¼Œè§¦å‘äººå·¥å¤æ ¸
+  # è¯„åˆ†ä¸º 0-5 åˆ†åˆ¶ï¼Œé˜ˆå€¼å¿…é¡» <= 5ï¼ˆè¶…è¿‡ 5 ä¼šå¯¼è‡´æ‰€æœ‰ä»»åŠ¡éƒ½åˆ¤å®šä¸ºè¾¹ç¼˜å€™é€‰ï¼‰
+  # è°ƒå¤§=æ›´å®¹æ˜“è§¦å‘äººå·¥å¤æ ¸ï¼›5.0 è¡¨ç¤ºä»…æ»¡åˆ†å…å¤æ ¸ï¼ˆå‡ ä¹å¿…ç„¶è§¦å‘ï¼Œé€‚åˆéªŒè¯ HIL é“¾è·¯ï¼‰
+  # è°ƒè¯•å®Œå»ºè®®è°ƒå›çœŸå®ä¸šåŠ¡é˜ˆå€¼ï¼ˆå¦‚ 3.0~3.5ï¼‰
   borderline-score: 5.0
-  # Graph Checkpoint ±£ÁôÊ±³¤(Ğ¡Ê±)£ºĞè¸²¸Ç HR ¸´ºËµÄÏìÓ¦ÖÜÆÚ£¬¹ıÆÚºóÎŞ·¨»Ö¸´ÖĞ¶ÏµÄÈÎÎñ
+  # Graph Checkpoint ä¿ç•™æ—¶é•¿(å°æ—¶)ï¼šéœ€è¦†ç›– HR å¤æ ¸çš„å“åº”å‘¨æœŸï¼Œè¿‡æœŸåæ— æ³•æ¢å¤ä¸­æ–­çš„ä»»åŠ¡
   checkpoint-ttl-hours: 72
-  # Ä£Äâ½âÎö¿ª¹Ø£ºtrue Ê±ÓÃ±¾µØ¹æÔò½âÎö¼òÀú(²»ÒÀÀµ OCR ·şÎñ)£¬±ãÓÚ±¾µØ¿ìËÙÌåÑé
+  # æ¨¡æ‹Ÿè§£æå¼€å…³ï¼štrue æ—¶ç”¨æœ¬åœ°è§„åˆ™è§£æç®€å†(ä¸ä¾èµ– OCR æœåŠ¡)ï¼Œä¾¿äºæœ¬åœ°å¿«é€Ÿä½“éªŒ
   mock-parse: true
 
-# ---------- ÑİÊ¾ÕËºÅ ----------
-# ºó¶Ë´úÂë¶µµ×Ä¬ÈÏÑİÊ¾ÕËºÅ£»Éú²ú»·¾³ÓÃ APP_ADMIN_USERNAME / APP_ADMIN_PASSWORD »·¾³±äÁ¿¸²¸Ç
+# ---------- æ¼”ç¤ºè´¦å· ----------
+# åç«¯ä»£ç å…œåº•é»˜è®¤æ¼”ç¤ºè´¦å·ï¼›ç”Ÿäº§ç¯å¢ƒç”¨ APP_ADMIN_USERNAME / APP_ADMIN_PASSWORD ç¯å¢ƒå˜é‡è¦†ç›–
 
 logging:
   level:
@@ -114,27 +119,27 @@ logging:
     com.alibaba.cloud.ai: warn
     io.opentelemetry: DEBUG
 
-# ---------- Actuator ¼à¿ØÓë OpenTelemetry ¿É¹Û²âĞÔ ----------
+# ---------- Actuator ç›‘æ§ä¸ OpenTelemetry å¯è§‚æµ‹æ€§ ----------
 management:
   endpoints:
     web:
       exposure:
-        # ±©Â¶È«²¿ Actuator ¶Ëµã£¨/actuator/health¡¢/actuator/metrics µÈ£©£¬±ãÓÚ±¾µØÅÅ²é£»Éú²ú½¨ÒéÊÕÁ²Îª health,info
+        # æš´éœ²å…¨éƒ¨ Actuator ç«¯ç‚¹ï¼ˆ/actuator/healthã€/actuator/metrics ç­‰ï¼‰ï¼Œä¾¿äºæœ¬åœ°æ’æŸ¥ï¼›ç”Ÿäº§å»ºè®®æ”¶æ•›ä¸º health,info
         include: "*"
   endpoint:
     health:
-      # ½¡¿µ¼ì²éÊ¼ÖÕ·µ»ØÃ÷Ï¸£¨º¬¸÷×é¼şÁ¬½Ó×´Ì¬£©£¬·½±ãÈ·ÈÏ MySQL/Redis µÈÊÇ·ñ¾ÍĞ÷
+      # å¥åº·æ£€æŸ¥å§‹ç»ˆè¿”å›æ˜ç»†ï¼ˆå«å„ç»„ä»¶è¿æ¥çŠ¶æ€ï¼‰ï¼Œæ–¹ä¾¿ç¡®è®¤ MySQL/Redis ç­‰æ˜¯å¦å°±ç»ª
       show-details: always
   tracing:
     sampling:
-      # Á´Â·²ÉÑùÂÊ£º1.0 = 100% È«Á¿²ÉÑù£¨Langfuse ÅÅÕÏÆÚ½¨ÒéÈ«Á¿£¬Á¿´óºó¿É½µÎª 0.1£©
+      # é“¾è·¯é‡‡æ ·ç‡ï¼š1.0 = 100% å…¨é‡é‡‡æ ·ï¼ˆLangfuse æ’éšœæœŸå»ºè®®å…¨é‡ï¼Œé‡å¤§åå¯é™ä¸º 0.1ï¼‰
       probability: 1.0
   otlp:
     tracing:
-      # Langfuse Cloud (US) OTLP ¶Ëµã£»Â·¾¶±ØĞëº¬ /api/public/otel£¬È±ÁË»á 404
+      # Langfuse Cloud (US) OTLP ç«¯ç‚¹ï¼›è·¯å¾„å¿…é¡»å« /api/public/otelï¼Œç¼ºäº†ä¼š 404
       endpoint: ${LANGFUSE_OTLP_ENDPOINT:https://us.cloud.langfuse.com/api/public/otel/v1/traces}
       headers:
-        # OTLP ¶ËµãµÄÈÏÖ¤·½Ê½Îª Basic Auth£ºbase64(pk-lf-xxx:sk-lf-xxx)£¬¾­»·¾³±äÁ¿×¢Èë£¬²»Ğ´ËÀÔÚÅäÖÃÎÄ¼ş
+        # OTLP ç«¯ç‚¹çš„è®¤è¯æ–¹å¼ä¸º Basic Authï¼šbase64(pk-lf-xxx:sk-lf-xxx)ï¼Œç»ç¯å¢ƒå˜é‡æ³¨å…¥ï¼Œä¸å†™æ­»åœ¨é…ç½®æ–‡ä»¶
         Authorization: "${LANGFUSE_AUTH_BASIC:}"
-        # v4 ÊµÊ±ÉãÈ¡£º²»¼Ó´ËÍ·£¬OTel Êı¾İ¿ÉÄÜÑÓ³Ù×î¶à 10 ·ÖÖÓ²ÅÈë¿â
+        # v4 å®æ—¶æ‘„å–ï¼šä¸åŠ æ­¤å¤´ï¼ŒOTel æ•°æ®å¯èƒ½å»¶è¿Ÿæœ€å¤š 10 åˆ†é’Ÿæ‰å…¥åº“
         x-langfuse-ingestion-version: "4"
