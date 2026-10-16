@@ -286,7 +286,7 @@ lion-resume-review-agent/           # 工程根目录 = Spring Boot 后端根目
 
 ### 1. 准备环境变量
 
-敏感配置（数据库口令 / API Key / 演示账号密码等）一律通过环境变量注入，`application.yml` 中无任何明文密钥：
+敏感配置（数据库口令 / API Key / 演示账号密码等）一律通过环境变量注入，`application1.yml` 中无任何明文密钥：
 
 ```bash
 cp .env.example .env   # 复制模板，按需填写 MySQL / Redis / DashScope / Langfuse 等真实值
@@ -359,11 +359,11 @@ npm run dev
 
 ## 环境变量配置
 
-所有敏感配置（数据库口令、API Key、演示账号密码等）均通过**环境变量**注入。`application.yml` 中只保留 `${ENV_VAR:默认值}` 占位符，不出现任何明文密钥。
+所有敏感配置（数据库口令、API Key、演示账号密码等）均通过**环境变量**注入。`application1.yml` 中只保留 `${ENV_VAR:默认值}` 占位符，不出现任何明文密钥。
 
 ### 加载方式
 
-- **本地开发**：工程根目录放置 `.env` 文件（已 gitignore），`application.yml` 通过 `spring.config.import: optional:file:.env[.properties]` 自动加载：
+- **本地开发**：工程根目录放置 `.env` 文件（已 gitignore），`application1.yml` 通过 `spring.config.import: optional:file:.env[.properties]` 自动加载：
 
   ```bash
   cp .env.example .env   # 首次克隆后执行，按需修改
@@ -484,7 +484,7 @@ management:
         x-langfuse-ingestion-version: "4"
 ```
 
-`LANGFUSE_AUTH_BASIC` 的值形如 `Basic <base64(pk:sk)>`，在 `.env` 中配置（已 gitignore），不再写死在 `application.yml`。
+`LANGFUSE_AUTH_BASIC` 的值形如 `Basic <base64(pk:sk)>`，在 `.env` 中配置（已 gitignore），不再写死在 `application1.yml`。
 
 ### 关键点
 

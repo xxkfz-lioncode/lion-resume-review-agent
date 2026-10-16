@@ -3,7 +3,7 @@ server:
 
 spring:
   config:
-    # æœ¬åœ°å¼€å‘ï¼šä»å·¥ç¨‹æ ¹ç›®å½• .env æ–‡ä»¶åŠ è½½ç¯å¢ƒå˜é‡ï¼ˆå·² gitignoreï¼Œæ¨¡æ¿è§ .env.exampleï¼‰
+    # ±¾µØ¿ª·¢£º´Ó¹¤³Ì¸ùÄ¿Â¼ .env ÎÄ¼ş¼ÓÔØ»·¾³±äÁ¿£¨ÒÑ gitignore£¬Ä£°å¼û .env.example£©
     import: optional:file:.env[.properties]
 
   application:
@@ -35,26 +35,26 @@ spring:
           max-idle: 8
           min-idle: 0
 
-  # ---------- SSE æ”¯æŒ ----------
+  # ---------- SSE Ö§³Ö ----------
   mvc:
     async:
       request-timeout: 30m
 
   ai:
-    # DashScope / åƒé—®å¤§æ¨¡å‹
+    # DashScope / Ç§ÎÊ´óÄ£ĞÍ
     dashscope:
-      # API Key ç»ç¯å¢ƒå˜é‡æ³¨å…¥ï¼ˆ.env ä¸­ DASHSCOPE_API_KEYï¼‰ï¼Œä¸å†™æ­»åœ¨é…ç½®æ–‡ä»¶
+      # API Key ¾­»·¾³±äÁ¿×¢Èë£¨.env ÖĞ DASHSCOPE_API_KEY£©£¬²»Ğ´ËÀÔÚÅäÖÃÎÄ¼ş
       api-key: ${DASHSCOPE_API_KEY:}
       chat:
         options:
           model: qwen3.8-max
           temperature: 0.7
           max-tokens: 4096
-          multi-model: true # å…³é”®ï¼šå¼€å¯å¤šæ¨¡æ€ç«¯ç‚¹
-    # Milvus å‘é‡åº“ï¼ˆSpring AI æ ‡å‡† VectorStore è‡ªåŠ¨é…ç½®ï¼‰
+          multi-model: true # ¹Ø¼ü£º¿ªÆô¶àÄ£Ì¬¶Ëµã
+    # Milvus ÏòÁ¿¿â£¨Spring AI ±ê×¼ VectorStore ×Ô¶¯ÅäÖÃ£©
     vectorstore:
-      # å‘é‡åº“ç±»å‹å¼€å…³ï¼šMilvus è‡ªåŠ¨è£…é…çš„æ¡ä»¶æ˜¯ type=milvusï¼ˆmatchIfMissing=trueï¼Œå³ä¸é…å°±å¯ç”¨ï¼‰
-      # é»˜è®¤ milvus ä¿æŒåŸè¡Œä¸ºï¼›è®¾ä¸º none å¯å½»åº•è·³è¿‡ MilvusVectorStore åˆ›å»ºï¼ˆä¸å¯ Milvus æ—¶ç”¨ï¼‰
+      # ÏòÁ¿¿âÀàĞÍ¿ª¹Ø£ºMilvus ×Ô¶¯×°ÅäµÄÌõ¼şÊÇ type=milvus£¨matchIfMissing=true£¬¼´²»Åä¾ÍÆôÓÃ£©
+      # Ä¬ÈÏ milvus ±£³ÖÔ­ĞĞÎª£»ÉèÎª none ¿É³¹µ×Ìø¹ı MilvusVectorStore ´´½¨£¨²»Æô Milvus Ê±ÓÃ£©
       type: ${VECTORSTORE_TYPE:milvus}
       milvus:
         client:
@@ -63,7 +63,7 @@ spring:
         database-name: default
         collection-name: lion_agent_resume
         embedding-dimension: 1024
-        # é¦–æ¬¡å¯åŠ¨è‡ªåŠ¨å»ºåº“å»ºé›†åˆï¼ˆéœ€ DashScope API Key å·²é…ç½®ï¼‰
+        # Ê×´ÎÆô¶¯×Ô¶¯½¨¿â½¨¼¯ºÏ£¨Ğè DashScope API Key ÒÑÅäÖÃ£©
         initialize-schema: true
 
 mybatis-plus:
@@ -77,36 +77,36 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
-# ---------- Sa-Token é‰´æƒ ----------
+# ---------- Sa-Token ¼øÈ¨ ----------
 sa-token:
   token-name: satoken
-  timeout: 2592000      # 30 å¤©
+  timeout: 2592000      # 30 Ìì
   active-timeout: -1
   is-concurrent: true
   is-share: true
   token-style: uuid
   is-log: true
 
-# ---------- ç®€å†å®¡æŸ¥ä¸šåŠ¡é…ç½® ----------
+# ---------- ¼òÀúÉó²éÒµÎñÅäÖÃ ----------
 resume:
-  # ä¸Šä¼ æ–‡ä»¶ä¿å­˜ç›®å½•
+  # ÉÏ´«ÎÄ¼ş±£´æÄ¿Â¼
   upload-dir: ./data/uploads
-  # LLM èŠ‚ç‚¹å¤±è´¥é‡è¯•æ¬¡æ•°
+  # LLM ½ÚµãÊ§°ÜÖØÊÔ´ÎÊı
   llm-retry-times: 3
-  # LLM èŠ‚ç‚¹é‡è¯•é—´éš”(æ¯«ç§’)
+  # LLM ½ÚµãÖØÊÔ¼ä¸ô(ºÁÃë)
   llm-retry-delay-ms: 1500
-  # å…­ç»´è¯„åˆ†ä¸­ï¼Œå‡å€¼ä½äºè¯¥å€¼åˆ¤å®šä¸º"è¾¹ç¼˜å€™é€‰"ï¼Œè§¦å‘äººå·¥å¤æ ¸
-  # è¯„åˆ†ä¸º 0-5 åˆ†åˆ¶ï¼Œé˜ˆå€¼å¿…é¡» <= 5ï¼ˆè¶…è¿‡ 5 ä¼šå¯¼è‡´æ‰€æœ‰ä»»åŠ¡éƒ½åˆ¤å®šä¸ºè¾¹ç¼˜å€™é€‰ï¼‰
-  # è°ƒå¤§=æ›´å®¹æ˜“è§¦å‘äººå·¥å¤æ ¸ï¼›5.0 è¡¨ç¤ºä»…æ»¡åˆ†å…å¤æ ¸ï¼ˆå‡ ä¹å¿…ç„¶è§¦å‘ï¼Œé€‚åˆéªŒè¯ HIL é“¾è·¯ï¼‰
-  # è°ƒè¯•å®Œå»ºè®®è°ƒå›çœŸå®ä¸šåŠ¡é˜ˆå€¼ï¼ˆå¦‚ 3.0~3.5ï¼‰
+  # ÁùÎ¬ÆÀ·ÖÖĞ£¬¾ùÖµµÍÓÚ¸ÃÖµÅĞ¶¨Îª"±ßÔµºòÑ¡"£¬´¥·¢ÈË¹¤¸´ºË
+  # ÆÀ·ÖÎª 0-5 ·ÖÖÆ£¬ãĞÖµ±ØĞë <= 5£¨³¬¹ı 5 »áµ¼ÖÂËùÓĞÈÎÎñ¶¼ÅĞ¶¨Îª±ßÔµºòÑ¡£©
+  # µ÷´ó=¸üÈİÒ×´¥·¢ÈË¹¤¸´ºË£»5.0 ±íÊ¾½öÂú·ÖÃâ¸´ºË£¨¼¸ºõ±ØÈ»´¥·¢£¬ÊÊºÏÑéÖ¤ HIL Á´Â·£©
+  # µ÷ÊÔÍê½¨Òéµ÷»ØÕæÊµÒµÎñãĞÖµ£¨Èç 3.0~3.5£©
   borderline-score: 5.0
-  # Graph Checkpoint ä¿ç•™æ—¶é•¿(å°æ—¶)ï¼šéœ€è¦†ç›– HR å¤æ ¸çš„å“åº”å‘¨æœŸï¼Œè¿‡æœŸåæ— æ³•æ¢å¤ä¸­æ–­çš„ä»»åŠ¡
+  # Graph Checkpoint ±£ÁôÊ±³¤(Ğ¡Ê±)£ºĞè¸²¸Ç HR ¸´ºËµÄÏìÓ¦ÖÜÆÚ£¬¹ıÆÚºóÎŞ·¨»Ö¸´ÖĞ¶ÏµÄÈÎÎñ
   checkpoint-ttl-hours: 72
-  # æ¨¡æ‹Ÿè§£æå¼€å…³ï¼štrue æ—¶ç”¨æœ¬åœ°è§„åˆ™è§£æç®€å†(ä¸ä¾èµ– OCR æœåŠ¡)ï¼Œä¾¿äºæœ¬åœ°å¿«é€Ÿä½“éªŒ
+  # Ä£Äâ½âÎö¿ª¹Ø£ºtrue Ê±ÓÃ±¾µØ¹æÔò½âÎö¼òÀú(²»ÒÀÀµ OCR ·şÎñ)£¬±ãÓÚ±¾µØ¿ìËÙÌåÑé
   mock-parse: true
 
-# ---------- æ¼”ç¤ºè´¦å· ----------
-# åç«¯ä»£ç å…œåº•é»˜è®¤æ¼”ç¤ºè´¦å·ï¼›ç”Ÿäº§ç¯å¢ƒç”¨ APP_ADMIN_USERNAME / APP_ADMIN_PASSWORD ç¯å¢ƒå˜é‡è¦†ç›–
+# ---------- ÑİÊ¾ÕËºÅ ----------
+# ºó¶Ë´úÂë¶µµ×Ä¬ÈÏÑİÊ¾ÕËºÅ£»Éú²ú»·¾³ÓÃ APP_ADMIN_USERNAME / APP_ADMIN_PASSWORD »·¾³±äÁ¿¸²¸Ç
 
 logging:
   level:
@@ -114,27 +114,27 @@ logging:
     com.alibaba.cloud.ai: warn
     io.opentelemetry: DEBUG
 
-# ---------- Actuator ç›‘æ§ä¸ OpenTelemetry å¯è§‚æµ‹æ€§ ----------
+# ---------- Actuator ¼à¿ØÓë OpenTelemetry ¿É¹Û²âĞÔ ----------
 management:
   endpoints:
     web:
       exposure:
-        # æš´éœ²å…¨éƒ¨ Actuator ç«¯ç‚¹ï¼ˆ/actuator/healthã€/actuator/metrics ç­‰ï¼‰ï¼Œä¾¿äºæœ¬åœ°æ’æŸ¥ï¼›ç”Ÿäº§å»ºè®®æ”¶æ•›ä¸º health,info
+        # ±©Â¶È«²¿ Actuator ¶Ëµã£¨/actuator/health¡¢/actuator/metrics µÈ£©£¬±ãÓÚ±¾µØÅÅ²é£»Éú²ú½¨ÒéÊÕÁ²Îª health,info
         include: "*"
   endpoint:
     health:
-      # å¥åº·æ£€æŸ¥å§‹ç»ˆè¿”å›æ˜ç»†ï¼ˆå«å„ç»„ä»¶è¿æ¥çŠ¶æ€ï¼‰ï¼Œæ–¹ä¾¿ç¡®è®¤ MySQL/Redis ç­‰æ˜¯å¦å°±ç»ª
+      # ½¡¿µ¼ì²éÊ¼ÖÕ·µ»ØÃ÷Ï¸£¨º¬¸÷×é¼şÁ¬½Ó×´Ì¬£©£¬·½±ãÈ·ÈÏ MySQL/Redis µÈÊÇ·ñ¾ÍĞ÷
       show-details: always
   tracing:
     sampling:
-      # é“¾è·¯é‡‡æ ·ç‡ï¼š1.0 = 100% å…¨é‡é‡‡æ ·ï¼ˆLangfuse æ’éšœæœŸå»ºè®®å…¨é‡ï¼Œé‡å¤§åå¯é™ä¸º 0.1ï¼‰
+      # Á´Â·²ÉÑùÂÊ£º1.0 = 100% È«Á¿²ÉÑù£¨Langfuse ÅÅÕÏÆÚ½¨ÒéÈ«Á¿£¬Á¿´óºó¿É½µÎª 0.1£©
       probability: 1.0
   otlp:
     tracing:
-      # Langfuse Cloud (US) OTLP ç«¯ç‚¹ï¼›è·¯å¾„å¿…é¡»å« /api/public/otelï¼Œç¼ºäº†ä¼š 404
+      # Langfuse Cloud (US) OTLP ¶Ëµã£»Â·¾¶±ØĞëº¬ /api/public/otel£¬È±ÁË»á 404
       endpoint: ${LANGFUSE_OTLP_ENDPOINT:https://us.cloud.langfuse.com/api/public/otel/v1/traces}
       headers:
-        # OTLP ç«¯ç‚¹çš„è®¤è¯æ–¹å¼ä¸º Basic Authï¼šbase64(pk-lf-xxx:sk-lf-xxx)ï¼Œç»ç¯å¢ƒå˜é‡æ³¨å…¥ï¼Œä¸å†™æ­»åœ¨é…ç½®æ–‡ä»¶
+        # OTLP ¶ËµãµÄÈÏÖ¤·½Ê½Îª Basic Auth£ºbase64(pk-lf-xxx:sk-lf-xxx)£¬¾­»·¾³±äÁ¿×¢Èë£¬²»Ğ´ËÀÔÚÅäÖÃÎÄ¼ş
         Authorization: "${LANGFUSE_AUTH_BASIC:}"
-        # v4 å®æ—¶æ‘„å–ï¼šä¸åŠ æ­¤å¤´ï¼ŒOTel æ•°æ®å¯èƒ½å»¶è¿Ÿæœ€å¤š 10 åˆ†é’Ÿæ‰å…¥åº“
+        # v4 ÊµÊ±ÉãÈ¡£º²»¼Ó´ËÍ·£¬OTel Êı¾İ¿ÉÄÜÑÓ³Ù×î¶à 10 ·ÖÖÓ²ÅÈë¿â
         x-langfuse-ingestion-version: "4"

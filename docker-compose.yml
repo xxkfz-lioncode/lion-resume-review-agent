@@ -14,7 +14,7 @@ services:
       TZ: Asia/Shanghai
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - mysql-data:/var/lib/mysql

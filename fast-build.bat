@@ -15,6 +15,8 @@ SET "JAVA_HOME=C:\Program Files\Java\jdk-17.0.9"
 REM 2. 确保系统能立刻找到 mvn 命令
 SET "MAVEN_HOME=D:\apache\maven\apache-maven-3.6.3"
 SET "PATH=%MAVEN_HOME%\bin;%JAVA_HOME%\bin;%PATH%"
+REM Maven 在 Windows 控制台输出中文日志时需要 UTF-8，避免打包阶段就因编码乱码
+SET "MAVEN_OPTS=-Dfile.encoding=UTF-8"
 
 REM 3. 打印当前正在使用的 Java 版本，以防路径搞错
 echo 正在使用的 Java 版本信息：

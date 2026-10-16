@@ -15,7 +15,7 @@ RUN apt-get update \
 ENV TZ=Asia/Shanghai \
     LANG=C.UTF-8 \
     # JDK 17 默认开启容器内存感知，这里限制堆上限避免被 OOM Kill
-    JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
+    JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8 -Djava.security.egd=file:/dev/./urandom"
 
 WORKDIR /app
 
