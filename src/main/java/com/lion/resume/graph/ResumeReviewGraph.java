@@ -3,6 +3,7 @@ package com.lion.resume.graph;
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.StateGraph;
+import com.alibaba.cloud.ai.graph.action.AsyncEdgeAction;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.config.SaverConfig;
 import com.lion.resume.common.constant.GraphNodes;
@@ -14,10 +15,13 @@ import com.lion.resume.graph.action.ParseResumeAction;
 import com.lion.resume.graph.action.ProjectScoringAction;
 import com.lion.resume.graph.action.SkillScoringAction;
 import com.lion.resume.graph.action.SynthesisAction;
+import com.lion.resume.graph.edge.ReviewRouter;
 import com.lion.resume.graph.observability.GraphNodeLifecycleBridge;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
+
+import java.util.Map;
 
 import static com.alibaba.cloud.ai.graph.StateGraph.END;
 import static com.alibaba.cloud.ai.graph.StateGraph.START;
@@ -31,11 +35,16 @@ import static com.alibaba.cloud.ai.graph.StateGraph.START;
  *         ├──→ skill_scoring   ──┐
  *         ├──→ project_scoring ──┤→ synthesis（并行 fan-in 汇合）
  *         └──→ culture_scoring ──┘
- *                   └── synthesis → human_review → generate_report → END
+ *                   └── synthesis ──[条件边 ReviewRouter]──┬─→ human_review → generate_report → END
+ *                                  └───────────────────────┴─────────────────↑
  * </pre>
  *
  * 并行语义：parse_resume 的多条出边构成 fan-out（并行评分）；
  * 三个评分节点汇聚到 synthesis 构成 fan-in（屏障，等待全部完成后进入）。
+ *
+ * <p>条件边：synthesis 完成后由 {@link com.lion.resume.graph.edge.ReviewRouter} 判定
+ * ——综合评分达标且无维度短板时跳过 {@code human_review}，直接 {@code generate_report}；
+ * 否则走人工复核（{@code human_review} 挂起，HR 确认后从断点续跑到 {@code generate_report}）。
  */
 @Component
 @RequiredArgsConstructor
@@ -48,6 +57,7 @@ public class ResumeReviewGraph {
     private final SynthesisAction synthesisAction;
     private final HumanReviewAction humanReviewAction;
     private final GenerateReportAction generateReportAction;
+    private final ReviewRouter reviewRouter;
 
     /**
      * 编译主图。
@@ -82,8 +92,13 @@ public class ResumeReviewGraph {
                 .addEdge(GraphNodes.SKILL, GraphNodes.SYNTHESIS)
                 .addEdge(GraphNodes.PROJECT, GraphNodes.SYNTHESIS)
                 .addEdge(GraphNodes.CULTURE, GraphNodes.SYNTHESIS)
-                // 主链
-                .addEdge(GraphNodes.SYNTHESIS, GraphNodes.HUMAN_REVIEW)
+                // 条件边：synthesis 后按评分判定是否需要人工复核
+                // 返回值必须命中下面的映射表，映射在编译期校验，写错启动即失败
+                .addConditionalEdges(GraphNodes.SYNTHESIS,
+                        AsyncEdgeAction.edge_async(reviewRouter), Map.of(
+                                ReviewRouter.TO_REVIEW, GraphNodes.HUMAN_REVIEW,
+                                ReviewRouter.TO_REPORT, GraphNodes.GENERATE_REPORT))
+                // 主链：人工复核确认后（或免复核时直接）进入报告生成
                 .addEdge(GraphNodes.HUMAN_REVIEW, GraphNodes.GENERATE_REPORT)
                 .addEdge(GraphNodes.GENERATE_REPORT, END);
 

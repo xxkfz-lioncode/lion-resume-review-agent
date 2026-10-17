@@ -35,13 +35,15 @@
 
 ### 1. AI 简历审查工作流（Graph 编排）
 
-- 7 节点状态机：`parse_resume → [skill_scoring | project_scoring | culture_scoring] → synthesis → human_review → generate_report`。
+- 7 节点状态机：`parse_resume → [skill_scoring | project_scoring | culture_scoring] → synthesis →（条件边）→ human_review? → generate_report`。
+  其中 `human_review` 是**可选分支**：评分达标的简历直接跳到 `generate_report`。
 - **并行执行**：3 个评分节点 fan-out 同时跑，synthesis 节点 fan-in 等待全部完成后进入。
 - 前端 Vue Flow 流程追踪面板实时高亮节点状态，ECharts 六维雷达图动态刷新，报告通过 SSE 打字机流式渲染。
 - 后端异步执行 Graph，`startReview` 立即返回 `taskId`，HTTP 不被长流程阻塞。
 
-### 2. Human-in-the-Loop 人工复核
+### 2. Human-in-the-Loop 人工复核 + 条件边自动分流
 
+- `synthesis` 后是**条件边**：综合评分达标且无维度短板时跳过 `human_review` 直接出报告，只有边缘候选才进人工复核（阈值见 `resume.auto-approve-score` / `review-dimension-floor`）。
 - `human_review` 节点实现 `InterruptableAction`，执行后返回 `InterruptionMetadata`，Graph 真正挂起并写入 Checkpoint。
 - HR 调整评分 → 后端通过 `CompiledGraph.updateState()` 写回新状态 → `RunnableConfig.resume()` 从 `human_review` 断点继续生成报告。
 - 已完成任务支持**重新复核**：从历史 Checkpoint 中定位 `nodeId == human_review` 的那一条，用其 `checkPointId` 续跑。
@@ -73,6 +75,7 @@
 - **Checkpoint 回溯能力**：`reapprove` 通过 `checkpointSaver.list(threadId)` 过滤 `human_review` 检查点，支持已完成任务的重新复核。
 - **并行 fan-out / fan-in**：`parse_resume` 三条出边触发并行评分，三个节点汇聚到 `synthesis` 形成屏障，显著降低耗时。
 - **声明式状态合并策略**：`KeyStrategyFactory` 配置 `AppendStrategy`（warnings 累积）/ `ReplaceStrategy`（评分覆盖）/ `CustomStrategy` 自定义规则。
+- **条件边自动分流**：`synthesis` 后的 `ReviewRouter` 按「综合分 + 最低维度」双阈值判定，达标简历跳过人工复核直接出报告，HR 只需关注边缘候选；判定与阈值解耦，改规则不动代码。
 - **零侵入节点可观测**：基于框架 `GraphLifecycleListener` 自建监听器链（桥接器 + `NodeExecutionListener`），计时 / 落库 / 推送按 `@Order` 编排，新增能力只写一个实现类，业务节点完全无感知。
 - **异步隔离的日志落库**：`NodeLogPersistListener` 走独立线程池（与 Graph 线程池隔离）且自带 try-catch，写库失败只告警、绝不阻断审查主流程。
 - **断点恢复状态兜底**：恢复时以 DB 为权威来源补齐 `taskId` / `resumeId` / `job_description` / 简历原文，防止 Checkpoint 序列化丢失未注册字段。
@@ -109,7 +112,7 @@
 | `OverAllState` | 全局共享状态 | 承载简历原文 / 评分 / 雷达图 / 复核意见 |
 | `NodeAction` | 同步节点：`Map<String,Object> apply(OverAllState)` | 框架基础形态，本项目未直接使用 |
 | `AsyncNodeActionWithConfig` | 异步节点 + 运行配置：`CompletableFuture<Map<String,Object>> apply(OverAllState, RunnableConfig)` | `BaseTrackingAction` 实现的接口，本项目所有业务节点都用它 |
-| `EdgeAction` | 条件边路由：`String apply(OverAllState)` | 返回目标节点名 |
+| `AsyncEdgeAction` | 异步条件边路由：`edge_async(state -> "label")` | `reviewRouter::route`，返回 `review` / `auto`，由映射表翻译成目标节点 |
 | `KeyStrategyFactory` | 声明每个状态键的合并策略 | `GraphConfig` |
 | `CompileConfig` + `SaverConfig` | 编译期配置（注入 Checkpoint 存储） | 注入 `BaseCheckpointSaver` |
 | `CompiledGraph` | 编译产物：`invoke` / `stream` / `getState` / `updateState` | Spring 单例 Bean |
@@ -220,7 +223,7 @@ protected String resolveTaskId(OverAllState state, RunnableConfig config) {
 
 ```java
 // ① 普通边：A 执行完必定走 B
-.addEdge(GraphNodes.SYNTHESIS, GraphNodes.HUMAN_REVIEW)
+.addEdge(GraphNodes.HUMAN_REVIEW, GraphNodes.GENERATE_REPORT)
 
 // ② 并行 fan-out：同一节点多条出边 → 下游并行执行（也可 addEdge(source, List.of(...))）
 .addEdge(GraphNodes.PARSE, GraphNodes.SKILL)
@@ -232,17 +235,76 @@ protected String resolveTaskId(OverAllState state, RunnableConfig config) {
 .addEdge(GraphNodes.PROJECT, GraphNodes.SYNTHESIS)
 .addEdge(GraphNodes.CULTURE, GraphNodes.SYNTHESIS)
 
-// ④ 条件边：按状态动态路由（示意，本项目用中断机制代替）
+// ④ 条件边：synthesis 后按评分结果动态路由（本项目真实用法）
 .addConditionalEdges(GraphNodes.SYNTHESIS,
-        state -> (Double) state.data().get("overall_score") >= 3.0
-                ? "pass" : "human_review",
-        Map.of("pass", GraphNodes.GENERATE_REPORT,
-               "human_review", GraphNodes.HUMAN_REVIEW))
+        AsyncEdgeAction.edge_async(reviewRouter::route), Map.of(
+                ReviewRouter.TO_REVIEW, GraphNodes.HUMAN_REVIEW,
+                ReviewRouter.TO_REPORT, GraphNodes.GENERATE_REPORT))
 ```
 
-`EdgeAction.apply(state)` 返回一个**字符串 key**，框架用第三个参数的 `Map` 把它翻译成真实节点名（也可以直接返回节点名）。
+`AsyncEdgeAction.edge_async(state -> "label")` 把 `OverAllState -> String` 函数包装成异步条件边，返回的字符串 key 由第三个参数的 `Map` 翻译成真实节点名。
 
 三个保留节点常量：`StateGraph.START`（`__START__`）、`StateGraph.END`（`__END__`）、`StateGraph.ERROR`。
+
+#### 条件边实战：低风险简历跳过人工复核
+
+**问题**：人工复核原本在主链上（`synthesis → human_review → generate_report`），每份简历都必须 HR 点一下才出报告。但高分候选人根本不需要复核，纯属浪费人力。
+
+**解法**：把 `synthesis → human_review` 的固定边换成**条件边**，达标简历直接跳到 `generate_report`。
+
+判定逻辑放在**节点**里（`SynthesisAction` 按阈值算出布尔量写入 State），边只做「翻译」：
+
+```java
+// SynthesisAction：算分数、定阈值、写判定结果
+double weakest = Math.min(skill, Math.min(project, Math.min(culture,
+        Math.min(education, Math.min(communication, growth)))));
+boolean needsHumanReview =
+        overall < props.getAutoApproveScore() || weakest < props.getReviewDimensionFloor();
+
+result.put(GraphStateKeys.NEEDS_HUMAN_REVIEW, needsHumanReview);
+result.put(GraphStateKeys.REVIEW_REASON, needsHumanReview
+        ? String.format("AI 综合评分 %.1f（最低维度 %.1f），需 HR 复核确认", overall, weakest)
+        : String.format("AI 综合评分 %.1f，最低维度 %.1f，达标免人工复核", overall, weakest));
+```
+
+```java
+// ReviewRouter：同步条件边，不读分数、不设阈值，只翻译判定结果
+@Component
+public class ReviewRouter implements EdgeAction {
+    public static final String TO_REVIEW = "review";
+    public static final String TO_REPORT = "auto";
+
+    @Override
+    public String apply(OverAllState state) {
+        boolean needsReview = Boolean.TRUE.equals(state.data().get(GraphStateKeys.NEEDS_HUMAN_REVIEW));
+        return needsReview ? TO_REVIEW : TO_REPORT;
+    }
+}
+```
+
+阈值走配置，改规则不用改代码：
+
+```yaml
+resume:
+  # 综合评分 ≥ 该值且无维度短板 → 跳过人工复核（设为 5.01 表示始终复核）
+  auto-approve-score: 4.0
+  # 任一维度低于该值即视为短板，即便综合分达标也必须复核
+  review-dimension-floor: 3.0
+```
+
+**分工**：「要不要复核」由条件边在**拓扑层**决定，「复核了没有」由 `interruptAfter` 在**节点层**保证。两者正交，所以 `HumanReviewAction` 内部仍然可以无条件挂起 —— 能被走到就说明确实需要 HR 确认。
+
+**配套改动**：
+
+| 位置 | 改动 |
+| --- | --- |
+| `GraphNodes.edges()` | 补上 `SYNTHESIS → GENERATE_REPORT`，前端拓扑才画得出这条分支 |
+| `FlowPanel.vue` | `human_review` 右移给分支让位；任务完成但未执行的节点显示「已跳过」 |
+| `ReviewTaskService#reapprove` | 免复核任务没有 `human_review` 检查点，报错文案与「已过期」区分开 |
+
+> **踩坑**：`apply()` 返回的字符串**必须**命中映射表的 key，否则运行时报
+> `cannot find edge mapping for id: 'xxx'`；映射目标节点不存在则在**编译期**就失败（`GraphStateException`）。
+> 另外判定用的状态键（这里是 `needs_human_review`）必须在 `KeyStrategyFactory` 注册，否则中断恢复往返后会丢失。
 
 ### 6. 编译：StateGraph → CompiledGraph
 
@@ -403,7 +465,8 @@ RunnableConfig config = RunnableConfig.builder()
 ② parse_resume        解析简历（PDFBox 抽文本 + LLM 结构化）   → Checkpoint#1
 ③ skill/project/culture 三个评分节点并行跑 LLM                 → Checkpoint#2/#3/#4
 ④ synthesis           屏障汇合，算出六维雷达图 + 诊断摘要        → Checkpoint#5
-⑤ human_review        执行完 → interruptAfter 中断              → Checkpoint#6 ★挂起
+   └─ 条件边 ReviewRouter：needs_human_review ? ⑤ : ⑦（免复核直接出报告）
+⑤ human_review        [需复核分支] 执行完 → interruptAfter 中断   → Checkpoint#6 ★挂起
    ├─ 任务状态置 NEEDS_REVIEW，SSE 推 pending，前端弹出 HR 复核框
 ⑥ HR 调整评分 → POST /api/review/approve
    ├─ CAS 抢占状态（status: NEEDS_REVIEW → RUNNING），防重复提交
@@ -576,6 +639,7 @@ public class SlowNodeAlarmListener implements NodeExecutionListener {
 8. 并行节点写同一键必须有 `AppendStrategy` 之类的合并策略，否则互相覆盖。
 9. 生命周期回调里**不要做重活**：`after` 是在节点执行线程上同步调用的，写库 / 推送要丢到独立线程池，否则拖慢每个节点。
 10. 日志里出现 `xxx__(节点名)` 是框架内部路由节点，不是业务节点，统计节点数时需过滤。
+11. 条件边 `apply()` 的返回值**必须**命中 `addConditionalEdges` 的映射表，否则运行时报 `cannot find edge mapping for id`；映射目标节点不存在则编译期就失败。判定所依赖的状态键（如 `needs_human_review`）也要在 `KeyStrategyFactory` 注册，否则中断恢复往返后丢失，路由会走错分支。
 
 ---
 

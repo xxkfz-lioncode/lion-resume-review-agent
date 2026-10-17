@@ -16,9 +16,13 @@ import java.util.Map;
 /**
  * End Node 前的报告生成节点：调用 LLM 流式生成诊断报告，并通过 SSE chunk 推送实现打字机效果。
  *
- * <p>说明：人工复核已改由 {@code HumanReviewAction#interruptAfter} 真正中断，
- * 本节点不会再在"未批准"状态下被空跑，因此无需保留等待分支。
- * 若 approved=true，说明报告基于 HR 调整后的评分生成。
+ * <p>本节点有两条入路（由 {@link com.lion.resume.graph.edge.ReviewRouter} 条件边决定）：
+ * <ul>
+ *   <li>{@code human_review} → 本节点：HR 已复核确认，{@code approved=true}，
+ *       报告基于 HR 调整后的评分生成；</li>
+ *   <li>{@code synthesis} → 本节点：综合评分达标跳过复核，{@code approved=false} 且
+ *       {@code needs_human_review=false}，报告直接采用 AI 评分。</li>
+ * </ul>
  */
 @Component
 public class GenerateReportAction extends BaseTrackingAction {

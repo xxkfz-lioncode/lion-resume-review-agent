@@ -21,8 +21,13 @@ import java.util.Optional;
 /**
  * Human-in-the-Loop（人机协同）节点 —— 基于官方中断机制（方案 B）。
  *
- * <p>本节点「无条件」挂起：任何任务都必须经 HR 复核确认后才进入 generate_report，
+ * <p>本节点只在「条件边命中」时才被执行：{@code synthesis} 完成后由
+ * {@link com.lion.resume.graph.edge.ReviewRouter} 判定是否需要人工复核，
+ * 达标简历会直接跳到 {@code generate_report}，根本不会进入本节点。
+ *
+ * <p>因此本节点内部可以保持「无条件挂起」——能被走到就说明确实需要 HR 确认，
  * 由 {@link InterruptableAction#interruptAfter} 始终返回 {@link InterruptionMetadata} 实现。
+ * 「要不要复核」的判断前移到条件边，「复核了没有」由中断机制保证，两者职责分离。
  *
  * <p>恢复链路：HR 确认评分 → {@code ReviewTaskService#approve}
  * → {@code CompiledGraph#updateState} 写入调整后的状态

@@ -64,13 +64,16 @@ const LAYOUT = {
   project_scoring: { x: 200, y: 300 },
   culture_scoring: { x: 520, y: 300 },
   synthesis: { x: 200, y: 460 },
-  human_review: { x: 200, y: 600 },
-  generate_report: { x: 200, y: 740 },
-  __END__: { x: 200, y: 880 }
+  // human_review 右移，给 synthesis → generate_report 的「免复核」分支让出通道
+  human_review: { x: 400, y: 600 },
+  generate_report: { x: 200, y: 760 },
+  __END__: { x: 200, y: 900 }
 }
 
 const nodes = computed(() => {
   if (!props.topology?.nodes) return []
+  // 任务已完成但节点从未执行 → 说明被条件边跳过（如评分达标免人工复核）
+  const finished = store.taskStatus === 'COMPLETED'
   return props.topology.nodes.map((n) => {
     const state = store.nodeStates[n.id] || {}
     const pos = LAYOUT[n.id] || { x: 200, y: 100 }
@@ -83,7 +86,9 @@ const nodes = computed(() => {
         label: n.label,
         status: state.status || '',
         message: state.message || n.description || '',
-        statusText: state.status ? undefined : '等待'
+        statusText: state.status
+          ? undefined
+          : (finished ? '已跳过' : '等待')
       }
     }
   })

@@ -100,6 +100,10 @@ resume:
   llm-retry-times: 3
   # LLM 节点重试间隔(毫秒)
   llm-retry-delay-ms: 1500
+  # 条件边：综合评分 ≥ 该值且无维度短板 → 跳过人工复核直接出报告（0-5；设为 5.01 表示始终复核）
+  auto-approve-score: 4.0
+  # 条件边：任一维度低于该值即视为短板，即便综合分达标也必须人工复核（0-5）
+  review-dimension-floor: 3.0
   # Checkpoint 持久化方式：redis（默认）/ mysql
   # redis：RedisSaver，依赖 spring.data.redis + Redisson，支持 TTL 自动过期
   # mysql：MysqlSaver，落库 GRAPH_THREAD / GRAPH_CHECKPOINT（首次启动自动建表），无 TTL 需自行清理

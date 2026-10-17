@@ -283,7 +283,9 @@ public class ReviewTaskService {
         Checkpoint target = checkpoints.stream()
                 .filter(cp -> GraphNodes.HUMAN_REVIEW.equals(cp.getNodeId()))
                 .findFirst()
-                .orElseThrow(() -> new BizException("人工复核检查点已过期，无法重新复核"));
+                // 免复核的任务根本没有 human_review 断点，提示要区分开，别一律说"已过期"
+                .orElseThrow(() -> new BizException(
+                        "未找到人工复核检查点：该任务可能综合评分达标已免复核，或检查点已过期"));
 
         // 用该检查点构造 resume 配置，后面的 updateState/resume 就会从 human_review 开始续跑
         RunnableConfig config = RunnableConfig.builder()

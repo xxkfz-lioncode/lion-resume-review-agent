@@ -71,10 +71,21 @@ public class SynthesisAction extends BaseTrackingAction {
 
         double overall = round((skill + project + culture + education + communication + growth) / 6.0);
 
+        // 条件边的判定依据：综合分达标「且」无维度短板，才可跳过人工复核
+        double weakest = Math.min(skill, Math.min(project, Math.min(culture,
+                Math.min(education, Math.min(communication, growth)))));
+        boolean needsHumanReview =
+                overall < props.getAutoApproveScore() || weakest < props.getReviewDimensionFloor();
+
         Map<String, Object> result = new HashMap<>();
         result.put(GraphStateKeys.RADAR_DATA, radar);
         result.put(GraphStateKeys.OVERALL_SCORE, overall);
         result.put(GraphStateKeys.DIAGNOSIS_SUMMARY, summary);
+        result.put(GraphStateKeys.NEEDS_HUMAN_REVIEW, needsHumanReview);
+        result.put(GraphStateKeys.REVIEW_REASON, needsHumanReview
+                ? String.format("AI 综合评分 %.1f（最低维度 %.1f），需 HR 复核确认", overall, weakest)
+                : String.format("AI 综合评分 %.1f，最低维度 %.1f，达标免人工复核", overall, weakest));
+        log.info("综合诊断完成: overall={}, weakest={}, needsHumanReview={}", overall, weakest, needsHumanReview);
         return result;
     }
 
