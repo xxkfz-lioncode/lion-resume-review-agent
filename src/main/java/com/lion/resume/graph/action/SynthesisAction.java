@@ -4,7 +4,9 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import cn.hutool.json.JSONUtil;
 import com.lion.resume.common.constant.GraphNodes;
 import com.lion.resume.common.constant.GraphStateKeys;
+import com.lion.resume.common.exception.BizException;
 import com.lion.resume.component.TaskProgressService;
+import com.lion.resume.dto.SynthesisResult;
 import com.lion.resume.graph.ResumeReviewProps;
 import com.lion.resume.service.LlmService;
 import lombok.extern.slf4j.Slf4j;
@@ -46,13 +48,17 @@ public class SynthesisAction extends BaseTrackingAction {
         double project = scoreValue(data.get(GraphStateKeys.scoreKey(GraphNodes.PROJECT)), "project_experience");
         double culture = scoreValue(data.get(GraphStateKeys.scoreKey(GraphNodes.CULTURE)), "culture_fit");
 
-        // 其余三个维度 + 诊断摘要（LLM，失败时规则兜底）
-        Map<String, Object> extra = extraDimensions(data);
+        // 其余三个维度 + 诊断摘要（LLM，按 JSON Schema 输出；失败即节点失败，无兜底）
+        SynthesisResult extra = extraDimensions(data);
 
-        double education = toDouble(extra.get("education"), 3.5);
-        double communication = toDouble(extra.get("communication"), 3.5);
-        double growth = toDouble(extra.get("growth_potential"), 3.5);
-        String summary = String.valueOf(extra.getOrDefault("summary", "候选人综合表现详见雷达图与报告。"));
+        double education = requireScore(extra.getEducation(), "education");
+        double communication = requireScore(extra.getCommunication(), "communication");
+        double growth = requireScore(extra.getGrowthPotential(), "growth_potential");
+        String summary = extra.getSummary() == null || extra.getSummary().isBlank()
+                ? null : extra.getSummary().trim();
+        if (summary == null) {
+            throw new BizException(500, "综合诊断失败：模型未返回诊断摘要");
+        }
 
         List<Map<String, Object>> radar = List.of(
                 radar("技能匹配", skill),
@@ -71,57 +77,40 @@ public class SynthesisAction extends BaseTrackingAction {
         return result;
     }
 
-    /** 补充维度：教育背景 / 沟通表达 / 潜力成长 + 诊断摘要 */
-    private Map<String, Object> extraDimensions(Map<String, Object> data) {
-        Map<String, Object> fallback = new HashMap<>();
-        fallback.put("education", 3.5);
-        fallback.put("communication", 3.5);
-        fallback.put("growth_potential", 3.5);
-        fallback.put("summary", "候选人综合表现良好，详见详细报告。");
+    /** 补充维度：教育背景 / 沟通表达 / 潜力成长 + 诊断摘要（JSON Schema 约束输出） */
+    private SynthesisResult extraDimensions(Map<String, Object> data) {
+        String system = "你是资深招聘专家。基于候选人与岗位情况，进行六维雷达综合诊断："
+                + "对教育背景、沟通表达、潜力成长三个维度评分（0-5）并给出综合诊断摘要。"
+                + "严格按给定的 JSON Schema 输出，分数必须是 0-5 的数字。";
+        String user = "岗位描述：\n" + data.getOrDefault(GraphStateKeys.JOB_DESCRIPTION, "")
+                + "\n\n候选人结构化信息：\n" + JSONUtil.toJsonStr(data.get(GraphStateKeys.RESUME_CONTENT))
+                + "\n\n简历原文：\n" + AbstractScoringAction.truncate(
+                String.valueOf(data.getOrDefault(GraphStateKeys.RESUME_TEXT, "")), 2000);
 
-        try {
-            String system = "你是资深招聘专家。基于候选人与岗位情况，进行六维雷达综合诊断："
-                    + "对教育背景、沟通表达、潜力成长三个维度评分（0-5）并给出诊断摘要。"
-                    + "返回 JSON：{education: 数字, communication: 数字, growth_potential: 数字, summary: 文字}。只输出 JSON。";
-            String user = "岗位描述：\n" + data.getOrDefault(GraphStateKeys.JOB_DESCRIPTION, "")
-                    + "\n\n候选人结构化信息：\n" + JSONUtil.toJsonStr(data.get(GraphStateKeys.RESUME_CONTENT))
-                    + "\n\n简历原文：\n" + AbstractScoringAction.truncate(
-                    String.valueOf(data.getOrDefault(GraphStateKeys.RESUME_TEXT, "")), 2000);
-            String response = llmService.call(system, user);
-            Map<String, Object> parsed = JSONUtil.parseObj(LlmService.extractJson(response));
-            if (parsed != null && !parsed.isEmpty()) {
-                return parsed;
-            }
-        } catch (Exception e) {
-            log.warn("综合诊断 LLM 调用失败，使用规则兜底: {}", e.getMessage());
+        SynthesisResult result = llmService.callForObject(system, user, SynthesisResult.class);
+        if (result == null) {
+            throw new BizException(500, "综合诊断失败：模型未返回有效内容");
         }
-        // 规则兜底：根据简历文本关键词估算
-        String text = String.valueOf(data.getOrDefault(GraphStateKeys.RESUME_TEXT, "")).toLowerCase();
-        Map<String, Object> content = AbstractScoringAction.castMap(data.get(GraphStateKeys.RESUME_CONTENT));
-        List<?> skills = content.get("skills") instanceof List<?> l ? l : List.of();
-
-        double education = text.contains("博士") ? 4.5
-                : text.contains("硕士") || text.contains("研究生") ? 4.2 : 3.5;
-        double communication = text.contains("沟通") || text.contains("协作") || text.contains("团队") ? 4.0 : 3.4;
-        double growth = 3.4 + Math.min(0.8, skills.size() * 0.15);
-        fallback.put("education", round(education));
-        fallback.put("communication", round(communication));
-        fallback.put("growth_potential", round(growth));
-        fallback.put("summary", "候选人具备基本岗位素质，详细评估请查看报告。");
-        return fallback;
+        return result;
     }
 
     private static double scoreValue(Object scoreMap, String dimensionKey) {
         Map<String, Object> map = AbstractScoringAction.castMap(scoreMap);
         Object dim = AbstractScoringAction.dim(map, dimensionKey);
-        if (dim != null) {
-            return AbstractScoringAction.toScore(dim, 3.5);
+        Object value = dim != null ? dim : map.get("score");
+        if (value == null) {
+            // 评分节点已保证写入该键，缺失说明上游异常，直接失败而不是塞一个假分数
+            throw new BizException(500, "缺失评分结果: " + dimensionKey);
         }
-        return AbstractScoringAction.toScore(map.get("score"), 3.5);
+        return AbstractScoringAction.toScore(value, 0);
     }
 
-    private static double toDouble(Object o, double fallback) {
-        return AbstractScoringAction.toScore(o, fallback);
+    /** 评分缺失即失败，不再用默认分兜底 */
+    private static double requireScore(Double value, String dimension) {
+        if (value == null) {
+            throw new BizException(500, "综合诊断失败：缺失维度评分 " + dimension);
+        }
+        return AbstractScoringAction.toScore(value, 0);
     }
 
     private static double round(double v) {

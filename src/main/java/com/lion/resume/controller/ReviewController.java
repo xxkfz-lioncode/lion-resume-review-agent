@@ -95,8 +95,24 @@ public class ReviewController {
      */
     @PostMapping("/approve")
     public R<Void> approve(@RequestBody ApproveRequest request) {
-        reviewTaskService.approve(request.getTaskId(), request.getAdjustedScores(),
-                request.getReviewComment());
+        reviewTaskService.approve(request.getTaskId(), request.getAdjustedScores(), request.getReviewComment());
+        return R.ok();
+    }
+
+    /**
+     * 重新打开已完成的 HR 复核：从 DB 报告回填历史评分/意见，供前端再次编辑。
+     */
+    @PostMapping("/reopen/{taskId}")
+    public R<Map<String, Object>> reopenReview(@PathVariable String taskId) {
+        return R.ok(reviewTaskService.reopenReview(taskId));
+    }
+
+    /**
+     * 重新复核并生成报告：用于已完成任务，只重跑 generate_report，不重新评分。
+     */
+    @PostMapping("/reapprove")
+    public R<Void> reapprove(@RequestBody ApproveRequest request) {
+        reviewTaskService.reapprove(request.getTaskId(), request.getAdjustedScores(), request.getReviewComment());
         return R.ok();
     }
 

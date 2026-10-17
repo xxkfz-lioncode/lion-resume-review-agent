@@ -4,6 +4,7 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import cn.hutool.json.JSONUtil;
 import com.lion.resume.common.constant.GraphStateKeys;
 import com.lion.resume.component.TaskProgressService;
+import com.lion.resume.dto.ScoreResult;
 import com.lion.resume.graph.ResumeReviewProps;
 import com.lion.resume.service.LlmService;
 import lombok.extern.slf4j.Slf4j;
@@ -43,20 +44,24 @@ public abstract class AbstractScoringAction extends BaseTrackingAction {
         String jobDesc = String.valueOf(data.getOrDefault(GraphStateKeys.JOB_DESCRIPTION, ""));
         String resumeText = String.valueOf(data.getOrDefault(GraphStateKeys.RESUME_TEXT, ""));
 
+        // JSON Schema 约束输出：score / dimensions / analysis / reasons 的字段名与类型由 ScoreResult 决定
         String system = "你是资深招聘专家，负责评估候选人" + reviewFocus()
-                + "。请返回 JSON：{score: 0-5 的数字, dimensions: {"
-                + dimensionKey() + ": 0-5 的数字}, analysis: 简短分析, reasons: [理由数组]}。只输出 JSON。";
+                + "。严格按给定的 JSON Schema 输出评分结果，score 与 dimensions 中的分数均为 0-5 的数字，"
+                + "dimensions 只输出当前评估的这一个维度。";
         String user = "岗位描述：\n" + jobDesc
                 + "\n\n候选人简历：\n" + JSONUtil.toJsonStr(resume)
                 + "\n\n简历原文：\n" + truncate(resumeText, 3000);
 
-        Map<String, Object> parsed = new HashMap<>();
+        ScoreResult result;
         try {
-            String response = llmService.call(system, user);
-            parsed = JSONUtil.parseObj(LlmService.extractJson(response));
+            result = llmService.callForObject(system, user, ScoreResult.class);
         } catch (Exception e) {
             log.warn("[{}] LLM 评分失败，使用兜底评分: {}", dimensionLabel(), e.getMessage());
+            result = null;
         }
+        Map<String, Object> parsed = result == null
+                ? new HashMap<>()
+                : JSONUtil.parseObj(JSONUtil.toJsonStr(result));
         // 键名统一由 GraphStateKeys.scoreKey 生成，SynthesisAction 读取时必须用同一方法
         return Map.of(GraphStateKeys.scoreKey(nodeId()), normalize(parsed));
     }

@@ -2,6 +2,8 @@ package com.lion.resume.service;
 
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
+import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
+import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
 import com.alibaba.cloud.ai.graph.state.StateSnapshot;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -24,6 +26,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +56,7 @@ public class ReviewTaskService {
     private final ReviewTaskMapper taskMapper;
     private final ReviewReportMapper reportMapper;
     private final ResumeService resumeService;
+    private final BaseCheckpointSaver checkpointSaver;
     private final CompiledGraph resumeReviewCompiledGraph;
     private final GraphEventPublisher eventPublisher;
     private final Executor graphExecutor;
@@ -60,12 +64,14 @@ public class ReviewTaskService {
     public ReviewTaskService(ReviewTaskMapper taskMapper,
                              ReviewReportMapper reportMapper,
                              ResumeService resumeService,
+                             BaseCheckpointSaver checkpointSaver,
                              CompiledGraph resumeReviewCompiledGraph,
                              GraphEventPublisher eventPublisher,
                              @Qualifier("graphExecutor") Executor graphExecutor) {
         this.taskMapper = taskMapper;
         this.reportMapper = reportMapper;
         this.resumeService = resumeService;
+        this.checkpointSaver = checkpointSaver;
         this.resumeReviewCompiledGraph = resumeReviewCompiledGraph;
         this.eventPublisher = eventPublisher;
         this.graphExecutor = graphExecutor;
@@ -164,11 +170,134 @@ public class ReviewTaskService {
             Map<String, Object> resumeState = buildResumeState(taskId, config, adjustedScores, reviewComment);
 
             // 写入 HR 调整，返回携带新 checkpointId 的配置
-            RunnableConfig resumeConfig = resumeReviewCompiledGraph
-                    .updateState(config, resumeState, GraphNodes.HUMAN_REVIEW);
+            RunnableConfig resumeConfig = resumeReviewCompiledGraph.updateState(config, resumeState, GraphNodes.HUMAN_REVIEW);
 
             publishResumed(taskId, resumeState);
             // 恢复后从中断处继续，已执行节点不重跑；resumeState 同时作为 inputs 兜底防字段丢失
+            graphExecutor.execute(() -> resumeGraph(taskId, resumeConfig, resumeState));
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("恢复 Graph 失败, taskId={}", taskId, e);
+            markFailed(taskId, e.getMessage());
+            throw new BizException("恢复审查流程失败: " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> parseRadar(String json) {
+        if (json == null || json.isBlank()) {
+            return new ArrayList<>();
+        }
+        cn.hutool.json.JSONArray arr = cn.hutool.json.JSONUtil.parseArray(json);
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (Object o : arr) {
+            list.add((Map<String, Object>) o);
+        }
+        return list;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Double> parseAdjustedScores(String json) {
+        if (json == null || json.isBlank()) {
+            return new HashMap<>();
+        }
+        cn.hutool.json.JSONObject obj = cn.hutool.json.JSONUtil.parseObj(json);
+        Map<String, Double> map = new HashMap<>();
+        for (Map.Entry<String, Object> e : obj.entrySet()) {
+            Object v = e.getValue();
+            double dv = v instanceof Number n ? n.doubleValue() : 0;
+            map.put(e.getKey(), dv);
+        }
+        return map;
+    }
+
+    /**
+     * HR 重新打开已完成的复核：从 DB 报告中回填评分与复核意见，供前端再次编辑。
+     *
+     * @return pendingData 包含 radar_data / overall_score / diagnosis_summary / hr_adjusted_scores / hr_comment
+     */
+    public Map<String, Object> reopenReview(String taskId) {
+        ReviewTask task = taskMapper.selectById(taskId);
+        if (task == null) {
+            throw new BizException(404, "Task not found: " + taskId);
+        }
+        ReviewReport report = reportMapper.selectOne(
+                new LambdaQueryWrapper<ReviewReport>().eq(ReviewReport::getTaskId, taskId));
+        if (report == null) {
+            throw new BizException("Report not found, cannot reopen review");
+        }
+        String status = task.getStatus();
+        if (!("COMPLETED".equals(status) || "NEEDS_REVIEW".equals(status))) {
+            throw new BizException("Task status does not support review reopen: " + status);
+        }
+
+        List<Map<String, Object>> radar = parseRadar(report.getRadarData());
+        Map<String, Double> adjusted = parseAdjustedScores(report.getHrAdjustedScores());
+        if (adjusted.isEmpty()) {
+            for (Map<String, Object> item : radar) {
+                Object v = item.get("value");
+                double dv = v instanceof Number n ? n.doubleValue() : 0;
+                adjusted.put(String.valueOf(item.get("name")), dv);
+            }
+        }
+
+        Map<String, Object> data = new HashMap<>();
+        data.put(GraphStateKeys.RADAR_DATA, radar);
+        data.put(GraphStateKeys.OVERALL_SCORE,
+                report.getOverallScore() == null ? 0 : report.getOverallScore().doubleValue());
+        data.put(GraphStateKeys.DIAGNOSIS_SUMMARY, report.getSummary());
+        data.put(GraphStateKeys.HR_ADJUSTED_SCORES, adjusted);
+        data.put(GraphStateKeys.HR_COMMENT, report.getHrReviewComment());
+        return data;
+    }
+
+    /**
+     * 重新复核：用于已完成任务，从 human_review 检查点恢复并继续执行 Graph。
+     * <p>与首次复核的区别：首次复核直接取最新检查点（中断处就是 human_review）；
+     * 重新复核需要从全部历史检查点里找到 human_review 节点的检查点，再 updateState + resume。
+     */
+    public void reapprove(String taskId, Map<String, Double> adjustedScores, String reviewComment) {
+        ReviewTask task = taskMapper.selectById(taskId);
+        if (task == null) {
+            throw new BizException(404, "Task not found: " + taskId);
+        }
+        String status = task.getStatus();
+        if (!("COMPLETED".equals(status) || "NEEDS_REVIEW".equals(status))) {
+            throw new BizException("Task status does not support reapprove: " + status);
+        }
+
+        // 当前还在 human_review 待复核：复用首次复核链路
+        if ("NEEDS_REVIEW".equals(status)) {
+            approve(taskId, adjustedScores, reviewComment);
+            return;
+        }
+
+        // 已完成的任务：从历史检查点中定位 human_review 断点
+        RunnableConfig listConfig = RunnableConfig.builder().threadId(taskId).build();
+        Collection<Checkpoint> checkpoints = checkpointSaver.list(listConfig);
+        Checkpoint target = checkpoints.stream()
+                .filter(cp -> GraphNodes.HUMAN_REVIEW.equals(cp.getNodeId()))
+                .findFirst()
+                .orElseThrow(() -> new BizException("人工复核检查点已过期，无法重新复核"));
+
+        // 用该检查点构造 resume 配置，后面的 updateState/resume 就会从 human_review 开始续跑
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId(taskId)
+                .checkPointId(target.getId())
+                .resume()
+                .build();
+
+        // CAS：仅当任务仍处于 COMPLETED 时才推进到 RUNNING，防止并发重复核
+        if (tryStartReapproving(taskId) != 1) {
+            throw new BizException("任务当前不在可重新复核状态: " + status);
+        }
+
+        try {
+            Map<String, Object> resumeState = buildResumeState(taskId, config, adjustedScores, reviewComment);
+            RunnableConfig resumeConfig = resumeReviewCompiledGraph
+                    .updateState(config, resumeState, GraphNodes.HUMAN_REVIEW);
+            publishResumed(taskId, resumeState);
             graphExecutor.execute(() -> resumeGraph(taskId, resumeConfig, resumeState));
         } catch (BizException e) {
             throw e;
@@ -251,6 +380,21 @@ public class ReviewTaskService {
         uw.eq(ReviewTask::getId, taskId)
                 .eq(ReviewTask::getStatus, "NEEDS_REVIEW")
                 .set(ReviewTask::getStatus, "RUNNING");
+        return taskMapper.update(null, uw);
+    }
+
+    /**
+     * CAS 推进：仅当任务处于 COMPLETED 时才置为 RUNNING（重新复核）。
+     *
+     * @return 影响行数，非 1 表示状态已被其他请求推进
+     */
+    private int tryStartReapproving(String taskId) {
+        LambdaUpdateWrapper<ReviewTask> uw = new LambdaUpdateWrapper<>();
+        uw.eq(ReviewTask::getId, taskId)
+                .eq(ReviewTask::getStatus, "COMPLETED")
+                .set(ReviewTask::getStatus, "RUNNING")
+                .set(ReviewTask::getCurrentNode, GraphNodes.HUMAN_REVIEW)
+                .set(ReviewTask::getProgress, 88);
         return taskMapper.update(null, uw);
     }
 

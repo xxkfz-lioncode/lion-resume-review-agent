@@ -7,7 +7,8 @@ import { store } from '../store'
 const props = defineProps({
   visible: { type: Boolean, default: false },
   taskId: { type: String, default: '' },
-  pendingData: { type: Object, default: null }
+  pendingData: { type: Object, default: null },
+  reopen: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:visible', 'approved'])
@@ -20,11 +21,12 @@ watch(
   () => props.visible,
   (v) => {
     if (v && props.pendingData?.radar_data) {
+      const adjusted = props.pendingData.hr_adjusted_scores || {}
       scores.value = props.pendingData.radar_data.map((d) => ({
         name: d.name,
-        value: Number(d.value || 0)
+        value: Number(adjusted[d.name] != null ? adjusted[d.name] : d.value || 0)
       }))
-      comment.value = ''
+      comment.value = props.pendingData.hr_comment || ''
     }
   }
 )
@@ -40,12 +42,13 @@ const confirm = async () => {
   try {
     const adjusted = {}
     scores.value.forEach((s) => (adjusted[s.name] = s.value))
-    await api.post('/review/approve', {
+    const url = props.reopen ? '/review/reapprove' : '/review/approve'
+    await api.post(url, {
       taskId: props.taskId,
       adjustedScores: adjusted,
       reviewComment: comment.value
     })
-    ElMessage.success('已确认复核，正在恢复报告生成…')
+    ElMessage.success(props.reopen ? '已更新评分，正在重新生成报告…' : '已确认复核，正在恢复报告生成…')
     emit('update:visible', false)
     emit('approved')
   } catch (e) {
@@ -59,7 +62,7 @@ const confirm = async () => {
 <template>
   <el-dialog
     :model-value="visible"
-    title="HR 人工复核（Human-in-the-Loop）"
+    :title="props.reopen ? 'HR 重新复核（更新评分并重新生成报告）' : 'HR 人工复核（Human-in-the-Loop）'"
     width="640px"
     :close-on-click-modal="false"
     @update:model-value="emit('update:visible', $event)"
@@ -69,7 +72,9 @@ const confirm = async () => {
       type="warning"
       :closable="false"
       show-icon
-      :title="`AI 综合评分 ${pendingData.overall_score} 低于及格线，请确认或调整各维度评分后继续`"
+      :title="props.reopen
+        ? `当前综合评分 ${pendingData.overall_score}，可调整评分后重新生成报告`
+        : `AI 综合评分 ${pendingData.overall_score} 低于及格线，请确认或调整各维度评分后继续`"
       style="margin-bottom: 16px"
     />
 
@@ -99,7 +104,9 @@ const confirm = async () => {
 
     <template #footer>
       <el-button @click="emit('update:visible', false)">取消</el-button>
-      <el-button type="primary" :loading="submitting" @click="confirm">确认评分并继续</el-button>
+      <el-button type="primary" :loading="submitting" @click="confirm">
+        {{ props.reopen ? '更新评分并重新生成报告' : '确认评分并继续' }}
+      </el-button>
     </template>
   </el-dialog>
 </template>

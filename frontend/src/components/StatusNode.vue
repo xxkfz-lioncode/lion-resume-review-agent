@@ -15,6 +15,8 @@ const statusText = computed(() => {
   return nodeStatusText(props.data.status)
 })
 
+const clickable = computed(() => props.data.id === 'human_review')
+
 const icon = computed(() => {
   switch (props.data.status) {
     case 'completed': return '✓'
@@ -31,7 +33,7 @@ const icon = computed(() => {
 </script>
 
 <template>
-  <div class="status-node" :class="stateClass">
+  <div class="status-node" :class="[stateClass, { 'is-clickable': clickable }]">
     <div class="node-icon">{{ icon }}</div>
     <div class="node-body">
       <div class="node-label">{{ data.label }}</div>
@@ -39,3 +41,12 @@ const icon = computed(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.status-node.is-clickable {
+  cursor: pointer;
+}
+.status-node.is-clickable:hover {
+  filter: brightness(0.96);
+}
+</style>

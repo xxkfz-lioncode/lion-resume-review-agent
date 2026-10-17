@@ -28,7 +28,9 @@ public class GraphEventSubscriber implements MessageListener {
                     GraphStatusEvent.class);
             boolean sent = emitterManager.send(event.getTaskId(), event);
             if (!sent) {
-                log.debug("本机无 [{}] 的 SSE 客户端，忽略事件: {} {}", event.getTaskId(),
+                // 没有本地 SSE 客户端是正常的（页面关闭/未连接/事件广播到了其它实例），
+                // 用 trace 避免大量 stream 事件刷屏；DEBUG 级别看不到。
+                log.trace("本机无 [{}] 的 SSE 客户端，忽略事件: {} {}", event.getTaskId(),
                         event.getNode(), event.getStatus());
             }
         } catch (Exception e) {

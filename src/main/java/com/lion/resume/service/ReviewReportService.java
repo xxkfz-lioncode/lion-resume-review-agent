@@ -84,8 +84,7 @@ public class ReviewReportService {
      *
      * @param approved 是否为 HR 复核后的二次生成
      */
-    public ReviewReport generate(String taskId, Map<String, Object> stateData,
-                                 boolean approved, String hrComment) {
+    public ReviewReport generate(String taskId, Map<String, Object> stateData, boolean approved, String hrComment) {
         // resumeId 解析：state 缺失时（如 Checkpoint 反序列化丢失字段）从任务表反查兜底，
         // 避免 Long.valueOf("null") 抛 NumberFormatException 导致节点失败
         Long resumeId = parseResumeId(stateData.get(GraphStateKeys.RESUME_ID));
@@ -106,8 +105,7 @@ public class ReviewReportService {
         String system = "你是资深 HR 招聘专家与职业规划顾问。基于六维雷达评分与候选人简历，"
                 + "输出一份结构化 Markdown 简历审查报告，包含：综合评分、六维分析、核心优势、风险提示、面试建议。"
                 + "语言专业客观。";
-        String user = buildPrompt(jobDesc, resumeContent, resumeText, radarData, overall,
-                needsReview, approved, hrComment);
+        String user = buildPrompt(jobDesc, resumeContent, resumeText, radarData, overall, needsReview, approved, hrComment);
 
         // 流式生成 + SSE 推送（打字机效果）
         StringBuilder sb = new StringBuilder();
@@ -180,8 +178,7 @@ public class ReviewReportService {
         try {
             // VectorStore 内部自动调用 EmbeddingModel 生成向量并入库（无需手动 embed）
             vectorStore.add(List.of(new Document(text, Map.of("resume_id", resumeId))));
-            List<Document> hits = vectorStore.similaritySearch(
-                    SearchRequest.builder().query(text).topK(5).build());
+            List<Document> hits = vectorStore.similaritySearch(SearchRequest.builder().query(text).topK(5).build());
             List<Long> similar = hits.stream()
                     .map(doc -> doc.getMetadata().get("resume_id"))
                     .filter(Number.class::isInstance)

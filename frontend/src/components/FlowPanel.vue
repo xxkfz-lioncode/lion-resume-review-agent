@@ -112,6 +112,27 @@ watch(
   () => props.topology,
   () => setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100)
 )
+
+async function onNodeClick({ node }) {
+  if (node.id !== 'human_review') return
+  if (!store.taskId) return
+  if (store.taskStatus !== 'COMPLETED' && store.taskStatus !== 'NEEDS_REVIEW') return
+
+  // 当前正在待复核：直接打开已有弹窗数据
+  if (store.taskStatus === 'NEEDS_REVIEW' && store.pendingReview) {
+    store.reviewVisible = true
+    return
+  }
+
+  // 已完成的任务：从后端重新加载复核数据
+  try {
+    const res = await api.post(`/review/reopen/${store.taskId}`)
+    store.pendingReview = res.data
+    store.reviewVisible = true
+  } catch (e) {
+    ElMessage.error('打开复核窗口失败: ' + e.message)
+  }
+}
 </script>
 
 <template>
@@ -135,14 +156,15 @@ watch(
       </div>
       <div class="flow-canvas">
         <VueFlow
-          v-if="nodes.length"
-          :nodes="nodes"
-          :edges="edges"
-          :node-types="nodeTypes"
-          :fit-view-on-init="true"
-          :min-zoom="0.3"
-          :max-zoom="1.5"
-          :default-viewport="{ zoom: 0.8 }"
+        v-if="nodes.length"
+        :nodes="nodes"
+        :edges="edges"
+        :node-types="nodeTypes"
+        :fit-view-on-init="true"
+        :min-zoom="0.3"
+        :max-zoom="1.5"
+        :default-viewport="{ zoom: 0.8 }"
+        @node-click="onNodeClick"
         >
           <Background pattern-color="#e5e7eb" :gap="20" />
           <Controls />

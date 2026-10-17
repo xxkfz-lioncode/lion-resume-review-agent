@@ -2,12 +2,12 @@
 
 <h1>🦁 Lion Resume Review · AI 招聘审查智能体</h1>
 
-<p><strong>基于 Spring AI Alibaba Graph 的企业级招聘审查智能体 —— 多智能体工作流 · 并行评分 · 人机协同 · LLM 全链路可观测</strong></p>
+<p><strong>基于 Spring AI Alibaba Graph 的企业级招聘审查智能体 —— 多智能体工作流 · 并行评分 · 人机协同断点续跑 · LLM 全链路可观测</strong></p>
 
 <p>
   <img src="https://img.shields.io/badge/Java-17-007396?logo=openjdk&logoColor=white" alt="Java 17">
   <img src="https://img.shields.io/badge/Spring%20Boot-3.5.4-6DB33F?logo=springboot&logoColor=white" alt="Spring Boot 3.5.4">
-  <img src="https://img.shields.io/badge/Spring%20AI%20Alibaba-1.1.2.3-6DB33F?logo=spring&logoColor=white" alt="Spring AI Alibaba">
+  <img src="https://img.shields.io/badge/Spring%20AI%20Alibaba%20Graph-1.1.2.3-6DB33F?logo=spring&logoColor=white" alt="Spring AI Alibaba">
   <img src="https://img.shields.io/badge/DashScope-%E5%8D%83%E9%97%AE-615CED?logo=alibabacloud&logoColor=white" alt="DashScope 千问">
   <img src="https://img.shields.io/badge/MySQL-8.x-4479A1?logo=mysql&logoColor=white" alt="MySQL 8.x">
   <img src="https://img.shields.io/badge/Redis-7.x-DC382D?logo=redis&logoColor=white" alt="Redis 7.x">
@@ -19,33 +19,39 @@
 </p>
 
 <p>
-  <a href="#主要功能点">功能总览</a> ·
-  <a href="#界面预览">界面预览</a> ·
-  <a href="#技术栈">技术栈</a> ·
-  <a href="#快速启动">快速开始</a> ·
-  <a href="#graph-工作流设计">核心设计</a> ·
-  <a href="#环境变量配置">环境变量</a>
+  <a href="#项目亮点">项目亮点</a> ·
+  <a href="#graph-实战">Graph 实战</a> ·
+  <a href="#快速启动">快速启动</a> ·
+  <a href="#环境变量配置">环境变量</a> ·
+  <a href="#常见问题">常见问题</a>
 </p>
 
 </div>
 
 ---
 
-基于 **Spring AI Alibaba Graph（状态机工作流）+ 阿里千问大模型 + SSE 流式通信 + Langfuse 可观测性** 的企业招聘简历 AI 审查智能体。系统以 **7 节点状态机**编排「简历解析 → 技能 / 项目 / 文化契合度并行评分 → 综合诊断 → 人工复核 → 报告生成」全流程，前端通过 **流程追踪面板** 实时可视化各节点执行状态（进度条 / 节点高亮 / 打字机报告 / ECharts 六维雷达图）；支持 **Human-in-the-Loop 人机协同复核**、历史报告管理、报告导出与重新审查，并基于 **Redis 状态快照** 实现断点恢复、**Milvus 向量检索** 实现历史相似人才召回、**OTel + Langfuse** 实现 LLM 调用全链路可观测。
+以 **Spring AI Alibaba Graph（状态机工作流）** 为核心编排引擎的 AI 招聘审查系统：7 个节点组成「简历解析 → 技能 / 项目 / 文化三维并行评分 → 综合诊断 → 人工复核 → 报告生成」的有向图，其中人工复核节点采用**官方 Human-in-the-Loop 中断机制**（`InterruptableAction` + `Checkpoint` + `updateState` + `resume`），Graph 真正挂起并把状态落盘，HR 确认后从**中断处继续跑后续节点**，而不是重新调用一次报告生成。全流程节点状态经 Redis Pub/Sub 广播 + SSE 推送到前端，实现流程面板实时高亮、雷达图动态刷新、报告打字机流式渲染，并由 **OpenTelemetry + Langfuse** 完成 LLM 调用全链路可观测。
 
 ---
 
 ## 目录
 
-- [主要功能点](#主要功能点)
+- [项目亮点](#项目亮点)
 - [技术栈](#技术栈)
 - [系统架构](#系统架构)
-- [Graph 工作流设计](#graph-工作流设计)
+- [Graph 实战](#graph-实战)
+  - [核心概念速查](#核心概念速查)
+  - [本项目的图结构](#本项目的图结构)
+  - [图装配代码](#图装配代码)
+  - [状态键合并策略](#状态键合并策略)
+  - [并行 fan-out / fan-in](#并行-fan-out--fan-in)
+  - [Human-in-the-Loop 中断与恢复](#human-in-the-loop-中断与恢复)
+  - [重新复核：回溯历史 Checkpoint](#重新复核回溯历史-checkpoint)
+  - [Checkpoint 存储可切换](#checkpoint-存储可切换)
+  - [踩坑清单](#踩坑清单)
 - [项目结构](#项目结构)
 - [快速启动](#快速启动)
-- [界面预览](#界面预览)
 - [环境变量配置](#环境变量配置)
-- [API 一览](#api-一览)
 - [SSE 事件协议](#sse-事件协议)
 - [核心实现机制](#核心实现机制)
 - [Langfuse 可观测性](#langfuse-可观测性)
@@ -53,51 +59,54 @@
 
 ---
 
-## 主要功能点
+## 项目亮点
 
-### 1. 登录鉴权
-- 独立全屏登录页，深蓝渐变背景 + 居中卡片，未登录不渲染主面板（两个独立页面切换）。
-- 基于 **Sa-Token** 的无状态 Token 认证，默认 30 天有效期。
-- 退出登录后自动清理前端所有业务状态并关闭 SSE 连接，回到登录页。
+> 以下均聚焦**后端编排能力**，也是本项目作为 Spring AI Alibaba Graph 实战样本的核心价值点。
 
-### 2. 简历上传
-- 支持 PDF / TXT / MD / DOC 等简历文件上传（限制 20MB）。
-- 上传成功后隐藏上传框，展示文件信息卡片（文件名 / 大小），支持「重新上传」。
-- 上传即解析（OCR/文档解析 → 结构化 JSON），解析状态入库（PENDING/PARSED/FAILED）。
+**1. 真正的 Human-in-the-Loop，不是"假挂起"**
 
-### 3. AI 审查工作流（Graph 编排）
-- 七个节点状态机：解析 → 技能评分 / 项目评分 / 文化契合度（并行）→ 综合诊断 → 人工复核 → 生成报告。
-- 前端流程追踪面板实时高亮节点状态：执行中（蓝）、完成（绿）、异常（红）、重试中（橙）。
-- 右侧 **ECharts 雷达图** 实时展示六维评分，随节点完成动态更新，面板可拖拽调整尺寸。
-- 连线带箭头指向，活跃路径蓝色高亮 + 动画流动，视觉更直观。
+不采用「节点返回后自己在业务代码里调报告生成」这类绕开框架的做法，而是使用官方中断机制：
 
-### 4. 报告生成与展示
-- LLM 以 **SSE 流式（打字机效果）** 生成详细诊断报告。
-- 报告包含：综合评分、六维雷达图、文字诊断摘要、结构化 Markdown 详报。
-- 报告支持一键**导出**为独立 HTML / Markdown 文件（含评分 + 六维表格）。
+`HumanReviewAction implements InterruptableAction` → `interruptAfter()` 返回 `InterruptionMetadata` → Graph 在该节点**真正停止执行**并写入 `Checkpoint`；HR 确认后由 `CompiledGraph.updateState()` 写回调整值、`RunnableConfig.resume()` 从中断处继续流向 `generate_report`。中断与恢复全部由框架驱动，**已执行的节点不会重跑**。
 
-### 5. 人机协同（Human-in-the-Loop）
-- 当 AI 六维均分低于阈值时，任务进入 `human_review` 挂起状态。
-- 前端自动弹出 HR 复核弹窗，HR 可查看雷达图、调整各维度评分、填写复核意见。
-- HR 确认后任务恢复，驱动**后置子图**重新计算综合评分并继续生成报告。
+**2. 断点可回溯的 Checkpoint 体系**
 
-### 6. 历史报告管理
-- 所有审查报告自动保存，独立「历史报告」页面分页展示。
-- 表格列：简历文件 | 评分 | 摘要 | 状态 | **生成耗时** | 生成时间 | 操作。
-- 支持**查看详情**（抽屉内展示完整报告 + 雷达图）、**删除**（二次确认 + 级联删除任务）、**关键词搜索**（摘要 / 简历文件名）。
-- 显示**生成耗时**（从任务创建到报告完成的秒数，格式化为 `xx 分 xx 秒`）。
+- `threadId = taskId`，一次审查一个线程，Checkpoint 天然按任务隔离；
+- 当前 `checkpoint-store: mysql`（`MysqlSaver` 落 `GRAPH_THREAD` / `GRAPH_CHECKPOINT` 两表，首次启动自动建表），可一行配置切回 `redis`（`RedisSaver`，支持 TTL）；
+- 支持「**重新复核**」：即使任务已完成，也能用 `checkpointSaver.list()` 遍历历史 Checkpoint，定位 `nodeId == human_review` 的那一条，用它的 `checkPointId` 构造 `RunnableConfig` 重新续跑，而不是重跑整条流水线。
 
-### 7. 重新审查
-- 历史报告支持对同一简历**重新走完整流程**，可输入新的岗位描述（JD）进行二次生成。
-- 重新审查带**实时进度条**（SSE 驱动，`topology` 事件更新百分比），完成后自动回到主面板展示新报告。
+**3. 并行 fan-out / fan-in，LLM 评分耗时从 3T 降到 T**
 
-### 8. 面板拖拽布局
-- 左侧 / 右侧 / 上下区域均可**拖拽调整尺寸**（CSS Grid 变量 + flex 比例）。
-- 雷达图通过 ResizeObserver 实时重绘，自适应面板尺寸。
+`parse_resume` 三条出边同时触发 `skill_scoring` / `project_scoring` / `culture_scoring`，三个节点再汇聚到 `synthesis` 形成**屏障**（全部完成才进入）。三个 LLM 评分节点从串行 3 次调用变为并行，整体耗时近似单次调用。
 
-### 9. LLM 全链路可观测（Langfuse）
-- 集成 **OpenTelemetry OTLP + Langfuse**，LLM 调用自动形成完整 trace 链路。
-- 异步线程池通过 `ContextPropagatingTaskDecorator` 自动传播 trace context，HTTP 请求 → Graph 节点 → LLM 调用一条链路贯穿。
+**4. 声明式的状态合并策略（KeyStrategy）**
+
+`GraphConfig.keyStrategyFactory` 为每个状态键声明合并规则：`warnings` 用 `AppendStrategy`（并行节点累积追加），评分 / 复核意见等单值字段用 `ReplaceStrategy`，另有自定义 `CustomStrategy` 扩展点。节点只需 `return Map` 增量，合并逻辑由框架统一处理。
+
+**5. 多实例可横向扩展的事件层**
+
+节点事件不是直接写 SSE，而是 `GraphEventPublisher → Redis Pub/Sub → 各实例 GraphEventSubscriber → 本机 SseEmitterManager`。浏览器连在哪个实例上都能收到自己 `taskId` 的事件，后端可无状态扩容。
+
+**6. LLM 容错重试 + 指数退避**
+
+`LlmService` 统一封装重试（默认 3 次、1.5s 基数、指数退避），限流 / 网络抖动时自动重试并向前端推送 `retrying` 状态，单个节点抖动不会整条流水线失败。
+
+**7. trace 跨线程传播，LLM 链路零侵入可观测**
+
+Graph 在 `graphExecutor` 线程池中异步执行，通过 `ContextPropagatingTaskDecorator` 自动传递 OTel context，使「HTTP 请求 → 线程池 → Graph 节点 → LLM 调用」串成一条 trace，业务代码**不需要手动创建 Span**。
+
+**8. 异步解耦 + 幂等 CAS 状态机**
+
+- `startReview()` 只建任务、投递线程池、立即返回 `taskId`，HTTP 不被长流程阻塞；
+- 恢复链路用 MyBatis-Plus 条件更新做 CAS（`UPDATE ... WHERE status='NEEDS_REVIEW'`），影响行数非 1 即拒绝，防止 HR 重复点击导致**两次恢复、双倍 LLM 开销**。
+
+**9. 可插拔的基础设施**
+
+Checkpoint 存储（Redis / MySQL）、向量库（`VECTORSTORE_TYPE=none` 即完全关闭 Milvus）均通过配置开关切换，不强依赖任何中间件也能跑通审查主流程。
+
+**10. 配置安全**
+
+`application.yml` 中只有 `${ENV_VAR:默认值}` 占位符，无任何明文密钥；本地由根目录 `.env` 加载（`spring.config.import`），生产由容器 / K8s Secret 注入同名变量即可。
 
 ---
 
@@ -105,173 +114,274 @@
 
 | 层 | 技术 | 说明 |
 | --- | --- | --- |
-| 前端框架 | Vue 3 + Vite + `<script setup>` | 组合式 API |
-| UI 组件库 | Element Plus（中文 locale） | 弹窗 / 表格 / 上传 / 进度条 |
-| 流程可视化 | Vue Flow | 流程追踪面板（带箭头连线） |
-| 图表 | ECharts | 六维雷达图 |
-| 流式通信 | EventSource（SSE） | 节点状态 + 报告流式推送 |
-| 状态管理 | 轻量 reactive store（composable） | 无 Pinia 依赖 |
-| 后端框架 | Spring Boot 3.5.4 | Java 17+ |
-| AI 编排 | Spring AI Alibaba 1.1.2.3（Graph + DashScope） | 状态机工作流 |
-| 大模型 | 阿里千问 qwen3.8-max（DashScope 多模态） | LLM 评分与报告生成 |
-| ORM | MyBatis-Plus 3.5.x | LambdaQueryWrapper / 逻辑删除 / 雪花 ID |
-| 数据库 | MySQL 8.x（utf8mb4） | 简历 / 任务 / 报告三张表 |
-| 缓存/状态 | Redis | Graph 状态快照 + SSE 事件 Pub/Sub 广播 |
-| 向量库 | Milvus（可选） | Spring AI VectorStore + 历史相似人才检索 |
+| AI 编排 | Spring AI Alibaba Graph 1.1.2.3 | StateGraph 状态机 / Checkpoint / HIL |
+| 大模型 | 阿里千问 `qwen3.8-max`（DashScope） | 解析、评分、诊断、报告 |
+| 后端框架 | Spring Boot 3.5.4（Java 17） | WebFlux `Flux` 流式、SSE |
+| ORM | MyBatis-Plus 3.5.x | Lambda 条件构造 / 逻辑删除 / 雪花 ID |
+| 数据库 | MySQL 8.x（utf8mb4） | 业务三表 + Graph Checkpoint 两表 |
+| 缓存 / 状态 | Redis 7 + Redisson | SSE 事件 Pub/Sub、RedisSaver（可选） |
+| 向量库 | Milvus 2.x（可选） | 历史人才向量召回 |
 | 鉴权 | Sa-Token | Token 登录态 |
-| 可观测性 | OpenTelemetry + Langfuse | OTLP 导出 LLM 调用链路 |
-| 构建 | Maven / npm | 前后端分离 |
+| 可观测性 | OpenTelemetry OTLP + Langfuse | LLM 全链路 trace |
+| 前端 | Vue 3 + Vite + Element Plus + Vue Flow + ECharts | 流程面板 / 雷达图 / 流式报告 |
 
 ---
 
 ## 系统架构
 
 ```
-┌─────────────────────────── 前端 (Vue3, :5173) ───────────────────────────┐
-│  LoginView ──► AppShell（面板可拖拽布局）                                    │
-│  ├─ UploadPanel  上传简历 → 文件信息卡片                                     │
-│  ├─ FlowPanel    Vue Flow 流程追踪面板（节点状态高亮 + 箭头连线）            │
-│  ├─ RadarChart   ECharts 六维雷达图（ResizeObserver 自适应）                │
-│  ├─ ReportPanel  流式报告 + 导出 HTML/Markdown                             │
-│  ├─ ReportHistory 历史报告列表（分页/搜索/删除/重新审查/生成耗时）            │
-│  └─ ReviewModal  HR 人工复核弹窗                                            │
-└──────────────┬──────────────────────────────────────────────────────────┘
-               │ REST /api/** + SSE /api/review/stream/{taskId}
-┌──────────────▼──────────────────────── 后端 (Spring Boot, :8080) ─────────┐
-│  AuthController（Sa-Token）  ResumeController（上传）  ReviewController      │
-│        │                                                                   │
-│  ReviewTaskService ── startReview() 创建任务 + 异步执行 Graph               │
-│        │                     │                                             │
-│        │              ResumeReviewGraph（StateGraph 装配，主图）            │
-│        │              7 个 Action 节点（parse/skill/project/culture/       │
-│        │              synthesis/human_review/generate_report）             │
-│        │                     │                                             │
-│        │              HR 复核确认后 → ResumeReviewPostGraph（后置子图）     │
-│        │                     │                                             │
-│        │              BaseTrackingAction 切面 → 节点状态上报                │
-│        │                     ▼                                             │
-│  GraphEventPublisher ──► Redis Pub/Sub ──► 本机 SseEmitterManager          │
-│        │                     │                                             │
-│        │              GraphStateCache（Redis 状态快照，支持中断恢复）        │
-│        ▼                                                                   │
-│  ReviewReportService ── 报告保存 / 向量化入库 / 相似人才检索                 │
-│        │                                                                   │
-│  LlmService（ChatClient）── 自动插桩 ──► Langfuse（OTLP / OpenTelemetry）  │
-└────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────── 前端 (Vue3, :5173) ────────────────────────┐
+│  UploadPanel · FlowPanel(Vue Flow) · RadarChart(ECharts)           │
+│  ReportPanel(流式+导出) · ReportHistory · ReviewModal(HR 复核)      │
+└──────────────┬─────────────────────────────────────────────────────┘
+               │ REST /api/**  +  SSE /api/review/stream/{taskId}
+┌──────────────▼──────────── 后端 (Spring Boot, :8080) ──────────────┐
+│  AuthController / ResumeController / ReviewController               │
+│        │                                                            │
+│  ReviewTaskService ── 创建任务 → graphExecutor 异步执行 Graph         │
+│        │                                                            │
+│  CompiledGraph（主图，单例）                                         │
+│    parse_resume → [skill|project|culture] → synthesis               │
+│                 → human_review（中断）→ generate_report              │
+│        │                                                            │
+│  HR 确认 → updateState + resume → 从中断处继续跑后续节点              │
+│        │                                                            │
+│  BaseTrackingAction（切面）→ 节点状态 → GraphEventPublisher          │
+│        │                          │                                 │
+│        │                    Redis Pub/Sub → SseEmitterManager       │
+│        ▼                                                            │
+│  ReviewReportService（落库 / 向量化）→ LlmService → Langfuse(OTLP)   │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 数据流（发起一次审查）
+**一次审查的数据流**
 
-1. 前端上传简历 → `POST /api/resume/upload` → 返回 `resumeId`。
-2. 填写岗位描述 → `POST /api/review/start` → 后端创建 `ReviewTask`，立即返回 `taskId`（异步执行 Graph，不阻塞 HTTP）。
-3. 前端用 `taskId` 建立 `EventSource` 连接 `/api/review/stream/{taskId}`。
-4. Graph 各节点通过切面上报状态 → Redis Pub/Sub 广播 → SSE 推送到前端。
-5. 前端收到 `topology` / `node` / `task` / `stream` 事件，驱动流程面板、雷达图、报告流式渲染。
-6. 任务完成 → 报告落库（`t_review_report`）→ 前端拉取详情并展示。
-7. 整个调用链（HTTP → Graph → LLM）由 OpenTelemetry 自动追踪，导出到 Langfuse。
+1. 上传简历 → 返回 `resumeId`；
+2. `POST /api/review/start` → 建 `ReviewTask`、立即返回 `taskId`（Graph 异步执行）；
+3. 前端用 `taskId` 订阅 SSE；
+4. 节点执行 → 切面广播事件 → Redis Pub/Sub → SSE 推送 → 面板 / 雷达图 / 报告实时更新；
+5. `human_review` 中断 → 前端弹 HR 复核框 → 确认 → `updateState + resume` → 从中断处续跑；
+6. 报告落库，整条链路（HTTP → Graph → LLM）由 OTel 追踪到 Langfuse。
 
 ---
 
-## Graph 工作流设计
+## Graph 实战
 
-### 主图（ResumeReviewGraph）
+> 这是本项目最核心的部分：Spring AI Alibaba Graph 的知识点与在项目中的落地方式。
 
-```
-START（__START__）
-  └── parse_resume（简历解析：OCR/文档解析 → 结构化 JSON）
-        ├──→ skill_scoring    ──┐   并行评分（fan-out）
-        ├──→ project_scoring  ──┤──→ synthesis（fan-in 汇合屏障）
-        └──→ culture_scoring  ──┘
-                    └── synthesis（综合诊断：六维雷达图 + 诊断摘要）
-                          └── human_review（人机协同：边缘候选人工复核）
-                                └── generate_report（LLM 流式生成报告）
-                                      └── END（__END__）
-```
+### 核心概念速查
 
-核心机制：
+| 概念 | 作用 | 本项目中的用法 |
+| --- | --- | --- |
+| `StateGraph` | 定义节点与边的有向图，`compile()` 后得到不可变的执行器 | `ResumeReviewGraph` 装配 7 个节点 |
+| `OverAllState` | 全局共享状态（Map），节点读写的唯一载体 | 承载简历原文、评分、雷达图、复核意见等 |
+| `NodeAction` | 节点逻辑：`apply(OverAllState) -> Map`，**只返回增量** | 所有评分 / 解析 / 报告节点 |
+| `InterruptableAction` | 节点级中断：`interrupt()`（执行前）/ `interruptAfter()`（执行后） | `HumanReviewAction` 用后者实现 HIL |
+| `KeyStrategyFactory` | 声明每个状态键的合并策略 | `GraphConfig` 中 Append / Replace / 自定义 |
+| `Edge` | 连边；**多出边 = fan-out 并行，多入边 = fan-in 屏障** | 三评分节点并行、汇合到 `synthesis` |
+| `CompileConfig` + `SaverConfig` | 编译期注入 Checkpoint 持久化器 | 注入 `BaseCheckpointSaver` |
+| `CompiledGraph` | 编译产物：`invoke` / `stream` / `getState` / `updateState` | 单例 Bean，全服务复用 |
+| `RunnableConfig` | 运行时配置：`threadId` / `checkPointId` / `resume()` | `threadId = taskId`，恢复时带 `checkPointId` |
+| `Checkpoint` | 节点执行后的状态快照（含 `nodeId` / `nextNodeId` / `state`） | 中断恢复与重新复核的依据 |
 
-- **并行执行**：`parse_resume` 多出边 fan-out 同时触发 3 个 LLM 评分任务；3 个评分节点 fan-in 汇聚到 `synthesis`（屏障，全部完成后进入），大幅降低耗时。
-- **状态注入**：每个节点执行前后（自定义切面 `BaseTrackingAction`）向状态注入进度，并同步到 Redis 状态快照。
-- **状态键策略（GraphConfig）**：全局状态各键的合并策略可配置——`warnings` 用 `AppendStrategy`（多节点累积追加，去重合并），`overall_score` 用 `ReplaceStrategy`（单值覆盖）；未注册键默认走覆盖策略。
-- **SSE 推送**：节点事件（`{"node":"parse_resume","status":"running","progress":30}`）经 Redis Pub/Sub 广播 → SSE 客户端实时收到，支持多实例横向扩展。
-- **容错重试**：LLM 限流/网络抖动自动重试（默认 3 次，间隔 1.5s，指数退避），SSE 推送 `retrying` 状态。
-- **人机协同**：AI 六维均分低于阈值（`resume.borderline-score`，默认 6）时进入 `human_review` 挂起，SSE 通知前端弹出 HR 审核框；HR 调整评分确认后恢复报告生成。
+**执行模型**：`compile()` 只做一次（Spring 单例 Bean，不要每次请求重新编译）；`stream(inputs, config)` 返回 `Flux<GraphResponse>`，需要 `blockLast()` 触发执行；节点返回的 Map 会按 `KeyStrategy` 合并进 `OverAllState`，再传给下一个节点。
 
-### 后置子图（ResumeReviewPostGraph）
-
-解决「HR 复核确认后仍有后续流程」的可扩展性问题：
+### 本项目的图结构
 
 ```
 START
-  └── generate_report（复用主图节点：approved=true 时直接生成报告）
-        └── (未来: background_check / interview / offer ...)
-              └── END
+  └── parse_resume              简历解析（PDFBox 抽文本 + LLM 结构化 JSON）
+        ├──→ skill_scoring      ┐
+        ├──→ project_scoring    ├─ 并行 fan-out（3 个 LLM 评分同时跑）
+        └──→ culture_scoring    ┘
+                 ↓ fan-in 屏障（三者全部完成才进入）
+              synthesis         综合诊断（六维雷达图 + 文字摘要）
+                 ↓
+              human_review      ★ Human-in-the-Loop 中断点
+                 ↓ （HR 确认后 resume）
+              generate_report   LLM 流式生成报告
+                 ↓
+               END
 ```
 
-- `approve()` 职责单一：校验状态 → 应用 HR 调整 → 标记已复核 → **驱动后置子图异步执行**，不关心具体下游动作。
-- 未来新增流程（背调 / 面试安排 / Offer 建议）只需在子图中追加节点/分支，**无需改动 approve 逻辑**。
+节点常量统一在 `GraphNodes` 中定义，`NODE_META` 同时作为前端流程面板的元数据源（标签 / 描述 / 阶段），**前后端拓扑由同一份 Java 常量驱动**，不会出现两边对不上的情况。
 
-### 挂起/恢复机制（Human-in-the-Loop）
+### 图装配代码
 
-采用 **「节点内决策 + 服务端恢复」** 模式（非框架 interrupt 挂起）：
+```java
+StateGraph workflow = new StateGraph(GraphConfig.keyStrategyFactory)
+        .addNode(GraphNodes.PARSE, parseResumeAction)
+        .addNode(GraphNodes.SKILL, skillScoringAction)
+        // ... 其余节点
+        .addEdge(START, GraphNodes.PARSE)
+        // 并行 fan-out
+        .addEdge(GraphNodes.PARSE, GraphNodes.SKILL)
+        .addEdge(GraphNodes.PARSE, GraphNodes.PROJECT)
+        .addEdge(GraphNodes.PARSE, GraphNodes.CULTURE)
+        // 并行 fan-in（屏障）
+        .addEdge(GraphNodes.SKILL, GraphNodes.SYNTHESIS)
+        .addEdge(GraphNodes.PROJECT, GraphNodes.SYNTHESIS)
+        .addEdge(GraphNodes.CULTURE, GraphNodes.SYNTHESIS)
+        // 主链
+        .addEdge(GraphNodes.SYNTHESIS, GraphNodes.HUMAN_REVIEW)
+        .addEdge(GraphNodes.HUMAN_REVIEW, GraphNodes.GENERATE_REPORT)
+        .addEdge(GraphNodes.GENERATE_REPORT, END);
 
-1. `HumanReviewAction`：均分 < borderline-score → 置 `NEEDS_REVIEW`，保存待复核快照到 Redis，SSE 推送 `pending` 事件，前端弹审核框。
-2. `GenerateReportAction`：感知 `needs_review && !approved` → 挂起返回 `report_ready=false`。
-3. HR 在 `/api/review/approve` 确认 → `ReviewTaskService.approve` 应用调整评分、置 `approved=true`，驱动 **`ResumeReviewPostGraph`** 子图从状态快照继续 → 重新执行 `generate_report` → 完成。
+return workflow.compile(CompileConfig.builder()
+        .saverConfig(SaverConfig.builder().register(checkpointSaver).build())
+        .build());
+```
+
+关键点：**必须在编译期注入 `BaseCheckpointSaver`**，否则中断后没有 Checkpoint，HIL 恢复无从谈起。
+
+### 状态键合并策略
+
+```java
+map.put(GraphStateKeys.WARNINGS, new AppendStrategy());   // 并行节点累积追加
+map.put(GraphStateKeys.CUSTOM,   new CustomStrategy());   // 自定义合并规则
+replace(map, TASK_ID, RESUME_ID, JOB_DESCRIPTION, RESUME_TEXT,
+           RADAR_DATA, OVERALL_SCORE, ..., APPROVED, HR_COMMENT);
+```
+
+- `AppendStrategy`：多节点往同一键追写，读取为 `List<T>`；
+- `ReplaceStrategy`：后写覆盖，用于结果唯一的字段；
+- **业务字段必须注册**：Checkpoint 的 `updateState / resume` 路径只保留注册过的键（见下方踩坑清单）。
+
+### 并行 fan-out / fan-in
+
+Graph 的并行不需要显式线程池：一个节点配置**多条出边**即 fan-out，一个节点被**多条入边**指向即 fan-in 屏障。项目中三个评分节点各自调用一次 LLM，由框架并行调度后汇合到 `synthesis`，`SynthesisAction` 拿到的是三份结果合并后的完整状态。
+
+### Human-in-the-Loop 中断与恢复
+
+**① 中断（节点侧）**
+
+```java
+public class HumanReviewAction extends BaseTrackingAction implements InterruptableAction {
+
+    @Override
+    public Optional<InterruptionMetadata> interrupt(String nodeId, OverAllState state, RunnableConfig config) {
+        return Optional.empty();          // 执行前不中断：要先算分并把数据推给前端
+    }
+
+    @Override
+    public Optional<InterruptionMetadata> interruptAfter(String nodeId, OverAllState state,
+                                                        Map<String, Object> result, RunnableConfig config) {
+        // 执行后无条件中断 → Graph 在此挂起并写入 Checkpoint
+        return Optional.of(InterruptionMetadata.builder(nodeId, state).build());
+    }
+}
+```
+
+同时该节点重写 `emitCompleteEvent() -> false`，前端不会把它显示成"已完成"，而是"待复核"高亮。
+
+**② 恢复（服务侧）**
+
+```java
+// 1) threadId 必须与发起时一致；resume() 清除中断标记，缺了不会继续往下走
+RunnableConfig config = RunnableConfig.builder().threadId(taskId).resume().build();
+
+// 2) 以 Checkpoint 为基底 + HR 调整 + DB 权威字段，构造恢复状态
+Map<String, Object> resumeState = buildResumeState(taskId, config, adjustedScores, reviewComment);
+
+// 3) 写回状态，返回携带新 checkpointId 的配置
+RunnableConfig resumeConfig = compiledGraph.updateState(config, resumeState, GraphNodes.HUMAN_REVIEW);
+
+// 4) 异步从中断处继续（inputs 传完整状态，防止未注册字段丢失）
+graphExecutor.execute(() -> resumeGraph(taskId, resumeConfig, resumeState));
+```
+
+配套的两个工程细节：
+
+- **CAS 幂等**：`UPDATE t_review_task SET status='RUNNING' WHERE id=? AND status='NEEDS_REVIEW'`，影响行数非 1 直接拒绝，避免重复恢复；
+- **中断与完成的区分**：`stream()` 在中断时也会 `doOnComplete`，所以完成回调里以 DB 状态判断——若已被置为 `NEEDS_REVIEW` 则视为挂起，不标记任务完成。
+
+### 重新复核：回溯历史 Checkpoint
+
+已完成任务再次复核时，最新 Checkpoint 已经是 `generate_report`，不能直接 resume。做法是遍历该线程的全部 Checkpoint，找到 `human_review` 那一条：
+
+```java
+Collection<Checkpoint> checkpoints = checkpointSaver.list(
+        RunnableConfig.builder().threadId(taskId).build());
+Checkpoint target = checkpoints.stream()
+        .filter(cp -> GraphNodes.HUMAN_REVIEW.equals(cp.getNodeId()))
+        .findFirst()
+        .orElseThrow(() -> new BizException("人工复核检查点已过期，无法重新复核"));
+
+RunnableConfig config = RunnableConfig.builder()
+        .threadId(taskId)
+        .checkPointId(target.getId())   // 指定从哪个检查点续跑
+        .resume()
+        .build();
+```
+
+后续与首次复核完全同构（`updateState` → `resume`），**复用同一条 Graph 链路**，不重跑前置的解析与评分节点。
+
+### Checkpoint 存储可切换
+
+```yaml
+resume:
+  checkpoint-store: mysql      # redis（默认，带 TTL） / mysql（当前，自动建表）
+  checkpoint-ttl-hours: 72     # 需覆盖 HR 复核响应周期（仅 redis 模式生效）
+```
+
+| 模式 | 实现 | 特点 |
+| --- | --- | --- |
+| `redis` | `RedisSaver`（依赖 Redisson） | 读写快、TTL 自动过期；Redis 不可用时需留意过期风险 |
+| `mysql` | `MysqlSaver` | 落 `GRAPH_THREAD` / `GRAPH_CHECKPOINT`，`CREATE_IF_NOT_EXISTS` 首次启动自动建表；无 TTL，需自行清理 |
+
+> 注意：`CreateOption` 是 `com.alibaba.cloud.ai.graph.checkpoint.savers.mysql` 包下的**独立顶层枚举**，不是 `MysqlSaver` 的内部类，写法为 `createOption(CreateOption.CREATE_IF_NOT_EXISTS)`。
+
+### 踩坑清单
+
+1. **业务字段必须在 `KeyStrategyFactory` 注册**：`updateState / resume` 只保留注册过的键，未注册的 `taskId` / `resumeId` 会在中断往返后丢失，导致下游节点取不到值。
+2. **恢复时 inputs 要传完整状态**：不要只传 `new HashMap<>()`，未注册字段靠 inputs 兜底。
+3. **DB 作为权威来源**：不信任 Checkpoint 中的基础字段，`buildResumeState()` 始终用 DB 值覆盖 `taskId` / `resumeId` / `job_description`，缺失时回补简历原文。
+4. **`resume()` 不能漏**：只配 `threadId` 而没有 `resume()`，Graph 不会继续往下执行。
+5. **不要每次请求重新编译图**：`CompiledGraph` 是 Spring 单例 Bean，注入即用。
+6. **不要 `releaseThread`**：HR 可能几小时后才确认，释放线程会让恢复链路需要额外定位活跃线程，交给 TTL 回收更可靠。
+7. **中断时 stream 也会 complete**：完成回调里必须用业务状态（DB）区分"真完成"与"挂起"。
 
 ---
 
 ## 项目结构
 
 ```
-lion-resume-review-agent/           # 工程根目录 = Spring Boot 后端根目录
-├── pom.xml                         # Maven 构建
-├── src/main/
-│   ├── java/com/lion/resume/
-│   │   ├── ResumeReviewApplication.java   # 启动类（@EnableAsync）
-│   │   ├── config/                        # AsyncConfig(线程池+trace传播) / CorsConfig / RedisPubSubConfig / SaTokenConfig
-│   │   ├── common/                        # R<T> 统一返回 / BizException / GraphNodes 常量(拓扑) / NodeStatus / TaskStatus
-│   │   ├── component/TaskProgressService  # 节点进度上报（DB + Redis 快照 + SSE）
-│   │   ├── dto/                           # GraphStatusEvent(SSE 载荷) / StartReviewRequest / ApproveRequest
-│   │   ├── cache/GraphStateCache.java     # Redis 状态快照（24h TTL，支持恢复）
-│   │   ├── sse/                           # SseEmitterManager / GraphEventPublisher / GraphEventSubscriber
-│   │   ├── graph/                         # Graph 装配 + 状态键策略
-│   │   │   ├── ResumeReviewGraph.java     #   主图装配（7 节点拓扑）
-│   │   │   ├── ResumeReviewPostGraph.java #   后置子图装配（复核后流程）
-│   │   │   ├── GraphConfig.java           #   状态键合并策略（Append/Replace）
-│   │   │   ├── GraphProgress.java         #   节点 → 进度区间映射
-│   │   │   ├── ResumeReviewProps.java     #   流程配置属性类
-│   │   │   └── action/                    # BaseTrackingAction / AbstractScoringAction
-│   │   │       #    ParseResumeAction / SkillScoringAction / ProjectScoringAction
-│   │   │       #    CultureScoringAction / SynthesisAction / HumanReviewAction / GenerateReportAction
-│   │   ├── entity/ mapper/                # 三实体 + MyBatis-Plus Mapper
-│   │   ├── service/                       # ReviewTaskService / ReviewReportService / ResumeService / LlmService
-│   │   ├── controller/                    # AuthController / ResumeController / ReviewController / ChatController
-│   │   └── util/ResumeParser.java         # PDFBox 文本解析
-│   └── resources/
-│       ├── application.yml                # 配置（敏感值全部走 ${ENV_VAR:默认} 占位符）
-│       └── schema.sql                     # MySQL 建表脚本
-├── .env.example                  # 环境变量模板（可提交，仅占位符）
-├── .env                          # 本地环境变量（gitignored，真实密钥，勿提交）
-├── data/                         # 上传简历存储目录（./data/uploads）
-├── frontend/                     # Vue3 前端
-│   ├── package.json / vite.config.js
-│   └── src/
-│       ├── main.js                  # Element Plus + Vue Flow + 全局样式
-│       ├── App.vue                  # 登录态切换 + SSE 监听 + 面板拖拽布局
-│       ├── api.js                   # axios 封装（R 数据解包 / Token 注入）
-│       ├── store.js                 # 全局响应式状态
-│       ├── composables/useReportExport.js  # 报告导出（HTML/Markdown）
-│       └── components/
-│           ├── LoginView.vue        # 独立登录页
-│           ├── UploadPanel.vue      # 上传面板
-│           ├── FlowPanel.vue        # 流程追踪面板（Vue Flow + 箭头连线）
-│           ├── StatusNode.vue       # 节点状态展示组件
-│           ├── RadarChart.vue       # 六维雷达图（ECharts）
-│           ├── ReportPanel.vue      # 报告展示 + 导出
-│           ├── ReportHistory.vue    # 历史报告（列表/详情/删除/重新审查）
-│           └── ReviewModal.vue      # HR 人工复核弹窗
-└── docker-compose.yml               # MySQL + Redis + Milvus(etcd/minio) 一键启动
+lion-resume-review-agent/              # 工程根目录 = Spring Boot 后端根目录
+├── pom.xml
+├── docker-compose.yml                 # MySQL + Redis + Milvus(etcd) + backend
+├── Dockerfile
+├── .env.example / .env                # 环境变量模板 / 本地真实值（gitignore）
+├── src/main/java/com/lion/resume/
+│   ├── config/
+│   │   ├── CheckpointSaverConfig.java # ★ Checkpoint 存储（Redis / MySQL）切换
+│   │   ├── GraphConfig.java           # ★ 状态键合并策略 KeyStrategyFactory
+│   │   ├── AsyncConfig.java           #   线程池 + trace 跨线程传播
+│   │   └── RedisPubSubConfig / CorsConfig / SaTokenConfig
+│   ├── graph/
+│   │   ├── ResumeReviewGraph.java     # ★ 主图装配（7 节点拓扑 + SaverConfig）
+│   │   ├── GraphProgress.java         #   节点 → 进度区间映射
+│   │   ├── ResumeReviewProps.java     #   流程配置属性
+│   │   ├── strategy/CustomStrategy.java
+│   │   └── action/
+│   │       ├── BaseTrackingAction.java    # 通用切面：耗时/重试/事件上报
+│   │       ├── AbstractScoringAction.java # 评分节点抽象（LLM + 兜底）
+│   │       ├── ParseResumeAction.java     # 解析（PDFBox + LLM 结构化）
+│   │       ├── Skill/Project/CultureScoringAction.java  # 并行评分
+│   │       ├── SynthesisAction.java       # 综合诊断（六维 + 摘要）
+│   │       ├── HumanReviewAction.java     # ★ HIL 中断节点
+│   │       └── GenerateReportAction.java  # 报告流式生成
+│   ├── service/
+│   │   ├── ReviewTaskService.java     # ★ 发起 / 复核 / 恢复 / 重新复核
+│   │   ├── ReviewReportService.java   #   报告落库 + 向量化
+│   │   ├── ResumeService.java / LlmService.java（重试 + 流式）
+│   ├── sse/                           # SseEmitterManager / Publisher / Subscriber
+│   ├── cache/GraphStateCache.java     # 状态快照
+│   ├── common/constant/               # GraphNodes(拓扑) / GraphStateKeys / 枚举
+│   └── entity/ mapper/ controller/
+├── src/main/resources/
+│   ├── application.yml                # 敏感值全部走 ${ENV_VAR:默认}
+│   └── schema.sql                     # t_resume / t_review_task / t_review_report
+└── frontend/                          # Vue3 前端
 ```
 
 ---
@@ -281,41 +391,46 @@ lion-resume-review-agent/           # 工程根目录 = Spring Boot 后端根目
 ### 前置条件
 
 - JDK 17+、Maven 3.8+、Node.js 18+
-- Docker（可选，用于 MySQL / Redis / Milvus）
-- 阿里云 DashScope API Key（可选，未配置时 LLM 节点返回模拟数据）
+- Docker（启动 MySQL / Redis / Milvus）
+- 阿里云 DashScope API Key（**必填**，未配置 LLM 节点会失败）
 
-### 1. 准备环境变量
-
-敏感配置（数据库口令 / API Key / 演示账号密码等）一律通过环境变量注入，`application1.yml` 中无任何明文密钥：
+### 1. 启动中间件
 
 ```bash
-cp .env.example .env   # 复制模板，按需填写 MySQL / Redis / DashScope / Langfuse 等真实值
+docker compose up -d mysql redis     # 最小依赖（MySQL:3307 / Redis:6379）
+docker compose up -d                 # 全套：额外拉起 Milvus + 后端容器
 ```
 
-> 详见下文 [环境变量配置](#环境变量配置)。
+> compose 首次启动会自动执行 `schema.sql` 建业务表；Graph 的 `GRAPH_THREAD` / `GRAPH_CHECKPOINT` 由 `MysqlSaver` 在应用启动时自动建。
+> 不想用 Milvus：在 `.env` 中设置 `VECTORSTORE_TYPE=none`，只起 `mysql redis` 即可。
 
-### 2. 启动基础设施
+### 2. 配置环境变量
 
 ```bash
-docker compose up -d mysql redis          # 最小依赖
-# 如需 Milvus 向量检索（可选）：
-docker compose up -d
+cp .env.example .env      # 复制模板后填写真实值
 ```
 
-> compose 首次启动会自动执行 `schema.sql` 建表。手动建库：
-> ```bash
-> > mysql -u root -p -e "CREATE DATABASE resume_review DEFAULT CHARACTER SET utf8mb4;"
-> > mysql -u root -p resume_review < src/main/resources/schema.sql
-> ```
+最小必填项：
+
+```properties
+MYSQL_URL=jdbc:mysql://localhost:3307/resume_review?...   # 用 compose 起 MySQL 时端口是 3307
+MYSQL_USERNAME=root
+MYSQL_PASSWORD=xxx
+REDIS_HOST=localhost
+REDIS_PORT=6379
+DASHSCOPE_API_KEY=sk-xxx                                   # 必填
+```
+
+其余变量见 [环境变量配置](#环境变量配置)。
 
 ### 3. 启动后端
 
 ```bash
-# 在工程根目录执行（.env 就绪后即可直接启动）
-mvn spring-boot:run
+mvn spring-boot:run                                  # 开发
+# 或：mvn -DskipTests package && java -jar target/resume-review-1.0.0.jar
 ```
 
-> 未配置 `DASHSCOPE_API_KEY` 时自动进入演示模式，LLM 节点返回模拟数据，全流程可跑通。
+启动日志出现 `Graph Checkpoint 持久化: MysqlSaver（自动建表 GRAPH_THREAD / GRAPH_CHECKPOINT）` 即为就绪。
 
 ### 4. 启动前端
 
@@ -325,15 +440,116 @@ npm install
 npm run dev
 ```
 
-访问 `http://localhost:5173`，演示账号 `admin / admin123`（可用 `APP_ADMIN_USERNAME` / `APP_ADMIN_PASSWORD` 环境变量覆盖）。
+访问 `http://localhost:5173`，演示账号 `admin / admin123`（可用 `APP_ADMIN_USERNAME` / `APP_ADMIN_PASSWORD` 覆盖）。
 
 ### 5. 体验流程
 
-1. 登录 → 上传简历（PDF/TXT/MD）→ 填写岗位描述 → 点击「发起 AI 简历审查」。
-2. 中间「流程追踪面板」实时高亮当前节点（蓝色=执行中、绿色=完成、红色=异常），连线箭头指示流程方向。
-3. 右侧雷达图实时展示六维评分；报告以打字机效果流式渲染。
-4. 若 AI 评分低于及格线，自动弹出「HR 人工复核」弹窗，调整评分后继续。
-5. 完成后在「历史报告」中查看 / 搜索 / 删除 / 重新审查 / 导出报告。
+1. 登录 → 上传简历（PDF / TXT / MD）→ 填写岗位描述 → 发起审查；
+2. 流程面板实时高亮（蓝=执行中、绿=完成、红=异常、橙=重试），三个评分节点会**同时亮起**；
+3. 雷达图随节点完成动态刷新；
+4. 走到 `human_review` 自动挂起并弹出 HR 复核框，调整评分 → 确认 → **从中断处继续生成报告**；
+5. 「历史报告」中可查看 / 搜索 / 删除 / 导出 / 重新审查；已完成任务点 `human_review` 节点可「重新复核」（走历史 Checkpoint 续跑）。
+
+---
+
+## 环境变量配置
+
+所有敏感配置均通过**环境变量**注入，`application.yml` 中只保留 `${ENV_VAR:默认值}` 占位符。
+
+### 加载方式
+
+- **本地开发**：工程根目录 `.env`（已 gitignore），`application.yml` 通过 `spring.config.import: optional:file:.env[.properties]` 自动加载；
+- **IDE**：直接在 Run Configuration 里配同名环境变量，效果相同；
+- **容器 / 生产**：`docker-compose` 的 `env_file: .env` 或 `environment:`，K8s Secret / Vault 注入同名变量同样生效。
+
+### 变量清单
+
+| 环境变量 | 说明 | 默认值 |
+| --- | --- | --- |
+| `MYSQL_URL` | MySQL JDBC 连接串（compose 起 MySQL 时用 `3307`） | `jdbc:mysql://localhost:3306/resume_review?...` |
+| `MYSQL_USERNAME` / `MYSQL_PASSWORD` | 数据库账号密码（必填） | 空 |
+| `MYSQL_ROOT_PASSWORD` | compose 初始化 MySQL 的 root 密码 | `root` |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Redis 地址 / 端口 / 密码 | `localhost` / `6379` / 空 |
+| `DASHSCOPE_API_KEY` | 阿里云 DashScope API Key（**必填**） | 空 |
+| `VECTORSTORE_TYPE` | `milvus` / `none`（`none` 彻底关闭向量库） | `milvus` |
+| `MILVUS_HOST` | Milvus 地址 | `127.0.0.1` |
+| `LANGFUSE_OTLP_ENDPOINT` | Langfuse OTLP 端点（须含 `/api/public/otel`） | `https://us.cloud.langfuse.com/api/public/otel/v1/traces` |
+| `LANGFUSE_AUTH_BASIC` | Langfuse OTLP Basic Auth：`Basic base64(pk:sk)` | 空 |
+| `APP_ADMIN_USERNAME` / `APP_ADMIN_PASSWORD` | 演示账号 | `admin` / `admin123` |
+| `JAR_FILE` | compose 挂载的 jar 路径 | `./target/resume-review-1.0.0.jar` |
+
+非敏感的行为开关直接写在 `application.yml` 的 `resume.*` 下：`upload-dir`、`llm-retry-times`、`llm-retry-delay-ms`、`checkpoint-store`、`checkpoint-ttl-hours`。
+
+---
+
+## SSE 事件协议
+
+`GET /api/review/stream/{taskId}` 建立长连接，按事件名推送：
+
+| 事件名 | 说明 | 载荷示例 |
+| --- | --- | --- |
+| `topology` | 连接建立后立即推送一次拓扑 | `{ nodes: [...], edges: [...] }` |
+| `node` | 节点状态变化 | `{ node:"skill_scoring", status:"running", progress:45 }` |
+| `task` | 任务整体状态 | `{ status:"completed", progress:100 }` |
+| `stream` | 报告流式 chunk（打字机） | `{ data:"该候选人的技术栈..." }` |
+| `info` | 附加信息日志 | `{ message:"..." }` |
+
+节点状态：`pending` / `waiting` / `running` / `stream` / `completed` / `error` / `retrying` / `resumed`。
+
+---
+
+## 核心实现机制
+
+### 后端
+
+- **异步执行**：`graphExecutor` 线程池跑 Graph，`startReview` 立即返回 `taskId`，避免 HTTP 长连接超时；
+- **状态广播**：节点事件 → `GraphEventPublisher` → Redis Pub/Sub → `SseEmitterManager`；Redis 不可用时降级为本机直推；
+- **Checkpoint 恢复**：以 `taskId` 为 `threadId`，`updateState + resume` 从中断处续跑，已执行节点不重跑；
+- **幂等 CAS**：恢复前用条件更新抢占状态，防止重复恢复造成双倍 LLM 开销；
+- **trace 传播**：`ContextPropagatingTaskDecorator` 让 OTel context 贯穿 HTTP → 线程池 → LLM；
+- **LLM 重试**：`LlmService` 统一 3 次重试 + 指数退避，失败推送 `retrying`；
+- **统一响应**：`R<T>` 封装 + 全局异常处理，前端 axios 拦截器自动解包。
+
+### 前端
+
+- **SSE 统一入口**：`App.vue` 注册 `topology` / `node` / `task` / `stream` / `info` 监听，写入 reactive store 驱动各组件；
+- **流程面板**：Vue Flow 渲染，箭头连线随激活状态变色；
+- **报告导出**：`useReportExport.js` 纯前端生成独立 HTML / Markdown，零后端依赖；
+- **面板拖拽**：CSS Grid 变量 + flex 比例，雷达图用 `ResizeObserver` 自适应重绘。
+
+---
+
+## Langfuse 可观测性
+
+```
+HTTP 请求（POST /api/review/start）
+   │  Spring Boot 自动 instrumentation 创建根 Span
+   ▼
+graphExecutor 线程池（ContextPropagatingTaskDecorator 传播 trace context）
+   ▼
+Graph 节点 → LlmService → chatClient.prompt()...call()
+   │  Spring AI 自动插桩创建子 Span
+   ▼
+OTLP Exporter → https://us.cloud.langfuse.com/api/public/otel/v1/traces
+```
+
+配置（`application.yml`）：
+
+```yaml
+management:
+  otlp:
+    tracing:
+      endpoint: ${LANGFUSE_OTLP_ENDPOINT:https://us.cloud.langfuse.com/api/public/otel/v1/traces}
+      headers:
+        Authorization: "${LANGFUSE_AUTH_BASIC:}"
+        x-langfuse-ingestion-version: "4"   # 不加此头数据可能延迟最多 10 分钟入库
+```
+
+要点：**端点必须是 OTLP 专用路径** `/api/public/otel/v1/traces`；**认证是 Basic Auth** `base64(pk:sk)`（不是 `x-langfuse-public-key`）；业务代码**零手动 Span**。
+
+![image-20260821223757850](README.assets/image-20260821223757850.png)
+
+![image-20260821220752798](README.assets/image-20260821220752798.png)
 
 ---
 
@@ -357,156 +573,14 @@ npm run dev
 
 ---
 
-## 环境变量配置
-
-所有敏感配置（数据库口令、API Key、演示账号密码等）均通过**环境变量**注入。`application1.yml` 中只保留 `${ENV_VAR:默认值}` 占位符，不出现任何明文密钥。
-
-### 加载方式
-
-- **本地开发**：工程根目录放置 `.env` 文件（已 gitignore），`application1.yml` 通过 `spring.config.import: optional:file:.env[.properties]` 自动加载：
-
-  ```bash
-  cp .env.example .env   # 首次克隆后执行，按需修改
-  ```
-
-- **IDE / 裸机**：也可不建 `.env`，直接在 IDEA Run Configuration 或系统环境变量中设置同名变量，Spring 会自动映射（如 `DASHSCOPE_API_KEY` → `spring.ai.dashscope.api-key`）。
-- **容器 / 生产**：docker-compose 中 `env_file: .env` 或在服务 `environment:` 注入同名变量；K8s Secret / Vault / KMS 运行时注入同样生效。
-
-### 变量清单
-
-| 环境变量 | 说明 | 默认值 |
-| --- | --- | --- |
-| `MYSQL_URL` | MySQL JDBC 连接串 | `jdbc:mysql://localhost:3306/resume_review?...` |
-| `MYSQL_USERNAME` | MySQL 账号 | 空（必填） |
-| `MYSQL_PASSWORD` | MySQL 密码 | 空（必填） |
-| `REDIS_HOST` / `REDIS_PORT` | Redis 地址 / 端口 | `localhost` / `6379` |
-| `REDIS_PASSWORD` | Redis 密码 | 空 |
-| `DASHSCOPE_API_KEY` | 阿里云 DashScope API Key（不配置则 LLM 进入演示模式） | 空 |
-| `MILVUS_HOST` | Milvus 地址（留空即关闭向量检索） | `118.25.109.72` |
-| `LANGFUSE_OTLP_ENDPOINT` | Langfuse OTLP 端点（必须含 `/api/public/otel`） | `https://us.cloud.langfuse.com/api/public/otel/v1/traces` |
-| `LANGFUSE_AUTH_BASIC` | Langfuse OTLP Basic Auth：`Basic base64(pk:sk)` | 空 |
-| `APP_ADMIN_USERNAME` / `APP_ADMIN_PASSWORD` | 演示账号（不设置时后端代码兜底 `admin/admin123`） | `admin` / `admin123` |
-
----
-
-## API 一览
-
-| 方法 | 路径 | 说明 | 鉴权 |
-| --- | --- | --- | --- |
-| POST | `/api/auth/login` | 登录，返回 Token | 开放 |
-| GET | `/api/auth/info` | 查询登录态 | 开放 |
-| POST | `/api/auth/logout` | 退出登录 | 开放 |
-| POST | `/api/resume/upload` | 上传简历（multipart） | 开放 |
-| GET | `/api/resume/{id}` | 简历详情 | 需登录 |
-| POST | `/api/review/start` | 发起审查，返回 `taskId` | 需登录 |
-| GET | `/api/review/stream/{taskId}` | **SSE 订阅节点实时状态** | 开放 |
-| GET | `/api/review/task/{taskId}` | 任务详情（任务+报告+拓扑） | 需登录 |
-| POST | `/api/review/approve` | HR 复核确认（驱动后置子图恢复） | 需登录 |
-| GET | `/api/review/topology` | Graph 拓扑 | 需登录 |
-| GET | `/api/review/reports` | 历史报告分页列表（`page`/`size`/`keyword`） | 需登录 |
-| DELETE | `/api/review/reports/{reportId}` | 删除报告（级联删任务） | 需登录 |
-| GET | `/api/review/ping` | 健康检查 | 需登录 |
-| POST | `/chat` | 测试用聊天接口 | 开放 |
-
----
-
-## SSE 事件协议
-
-`GET /api/review/stream/{taskId}` 建立 SSE 长连接，服务端按节点推送以下事件（`event name` + JSON data）：
-
-| 事件名 | 说明 | 载荷示例 |
-| --- | --- | --- |
-| `topology` | Graph 拓扑（连接建立后立即推送一次） | `{ nodes: [...], edges: [...] }` |
-| `node` | 节点状态变化（含 `__START__` 开始节点） | `{ "node":"skill_scoring", "status":"running", "progress":45, "message":"..." }` |
-| `task` | 任务整体状态 | `{ "status":"completed", "progress":100, "message":"..." }` |
-| `stream` | 报告流式 chunk（打字机） | `{ "data":"该候选人的技术栈..." }` |
-| `info` | 附加信息日志 | `{ "message":"..." }` |
-
-节点状态枚举：`pending` / `waiting` / `running` / `stream` / `completed` / `error` / `retrying` / `resumed`。
-
-> 说明：`__START__` 节点在任务创建时即置为 `completed`（node 事件），`__END__` 节点在任务完成/失败时同步更新（node 事件），保证流程面板首尾节点状态完整。
-
----
-
-## 核心实现机制
-
-### 前端
-- **登录态切换**：`App.vue` 顶层 `v-if="!store.loggedIn"` 渲染 `LoginView`，否则渲染主面板；退出时清空全部业务状态并关闭 SSE。
-- **SSE 监听**：统一在 `App.vue` 管理，`addEventListener` 分发 `topology` / `node` / `task` / `stream` / `info` 事件，写入 `store` 驱动各组件。
-- **面板拖拽**：CSS Grid 列模板 `var(--left-w) 8px 1fr 8px var(--right-w)`，mousedown 记录起点 + mousemove 更新变量；上下比例用 flex 百分比。
-- **流程连线箭头**：`FlowPanel.vue` 中每条 edge 配置 `markerEnd: { type: 'arrow' }`，颜色随连线激活状态联动（蓝/灰）。
-- **报告导出**：`useReportExport.js` 前端直接生成独立 HTML（含样式、评分表、六维表格）与 Markdown 文件，零后端依赖。
-- **重新审查进度条**：`ReportHistory.vue` 内独立 SSE 连接，`topology` 事件更新百分比，`report` 事件 100% 后自动关闭弹窗并切回主面板。
-
-### 后端
-- **异步执行**：`@EnableAsync` + 自定义 `graphExecutor` 线程池执行 Graph，`startReview` 立即返回 `taskId`，避免 HTTP 长连接超时。
-- **状态广播**：节点事件 → `GraphEventPublisher` → Redis Pub/Sub → `SseEmitterManager` 推送到对应 `taskId` 的 SSE 通道；Redis 不可用时降级为本机直推。
-- **状态快照**：`GraphStateCache` 将 Graph 执行状态（含待复核快照）写入 Redis（24h TTL），支持中断恢复与多实例共享。
-- **状态键策略**：`GraphConfig` 定义各状态键合并策略（`AppendStrategy` / `ReplaceStrategy`），并行节点写入同一键时自动累积合并。
-- **人机协同恢复**：Graph 挂起于 `human_review`，`approve()` 应用 HR 调整评分、重算综合分，**驱动 `ResumeReviewPostGraph` 后置子图**继续执行。
-- **trace 跨线程传播**：`AsyncConfig` 中两个线程池配置 `ContextPropagatingTaskDecorator`，提交任务时捕获 OTel/Micrometer context 并在工作线程恢复，LLM 调用自动形成完整链路，无需手动创建 Span。
-- **生成耗时**：`Duration.between(任务 createTime, 报告 updateTime)` 计算，取整秒。
-- **统一响应**：`R<T>` 封装 + 全局异常处理，前端 axios 拦截器自动解包 `data`。
-
----
-
-## Langfuse 可观测性
-
-访问地址：https://us.cloud.langfuse.com/
-
-### 集成原理
-
-```
-HTTP 请求（POST /api/review/start）
-   │  Spring Boot 自动 instrumentation 创建根 Span
-   ▼
-graphExecutor 线程池（ContextPropagatingTaskDecorator 传播 trace context）
-   │
-   ▼
-Graph 节点 → LlmService → chatClient.prompt()...call()
-   │  Spring AI 自动插桩（spring-ai-observability）创建子 Span
-   ▼
-OTLP Exporter → https://us.cloud.langfuse.com/api/public/otel/v1/traces
-```
-
-### 配置说明（application.yml）
-
-```yaml
-management:
-  otlp:
-    tracing:
-      # Langfuse Cloud (US) OTLP 端点；路径必须含 /api/public/otel，缺了会 404
-      endpoint: ${LANGFUSE_OTLP_ENDPOINT:https://us.cloud.langfuse.com/api/public/otel/v1/traces}
-      headers:
-        # OTLP 端点的认证方式为 Basic Auth：base64(pk-lf-xxx:sk-lf-xxx)，经环境变量注入
-        Authorization: "${LANGFUSE_AUTH_BASIC:}"
-        # 实时摄取：不加此头，OTel 数据可能延迟最多 10 分钟才入库
-        x-langfuse-ingestion-version: "4"
-```
-
-`LANGFUSE_AUTH_BASIC` 的值形如 `Basic <base64(pk:sk)>`，在 `.env` 中配置（已 gitignore），不再写死在 `application1.yml`。
-
-### 关键点
-
-- **端点是 OTLP 专用**：`/api/public/otel/v1/traces`（EU: `cloud.langfuse.com` / US: `us.cloud.langfuse.com` / JP: `jp.cloud.langfuse.com`）。
-- **认证是 Basic Auth**：`base64(publicKey:secretKey)`，不是 `x-langfuse-public-key`（那是 HTTP API 用的）。
-- **无需手动 Span**：依赖线程池 `ContextPropagatingTaskDecorator` 自动传播，业务代码零侵入。
-- **零侵入成本**：只需 OTLP 配置 + `micrometer-tracing-bridge-otel` + `opentelemetry-exporter-otlp` 依赖，Spring AI 自动插桩即可工作。
-
-![image-20260821223757850](README.assets/image-20260821223757850.png)
-
-![image-20260821220752798](README.assets/image-20260821220752798.png)
-
----
-
 ## 常见问题
 
-- **启动报 Redis 连接失败**：先 `docker compose up -d redis`；Redis 不可用时 SSE 会降级为本机直推，不阻塞主流程。
-- **进度条一直 0% / 不更新**：确认前端使用 `addEventListener('topology'/'node'/'task', ...)` 监听自定义事件名（不是 `onmessage`），且 SSE URL 的 `taskId` 为字符串（对象会导致 `[object Object]`）。
-- **流程面板首尾节点不显示完成**：`__START__` / `__END__` 节点需要 `node` 类型事件更新（分别由 startReview / markCompleted / markFailed 发出），仅 `task` 事件不会更新节点面板。
-- **生成耗时显示 0**：耗时为「任务创建 → 报告完成」时间差，请确认 `t_review_task.create_time` 与 `t_review_report.update_time` 均已正确写入。
-- **Milvus 未启动**：注释掉 `spring.ai.vectorstore.milvus.client.host` 即关闭向量检索，不影响审查主流程。
-- **Langfuse 报 404**：OTLP 端点必须是 `/api/public/otel/v1/traces`（含 `/public/`），且认证用 Basic Auth。
-- **Langfuse 一直 Waiting for first trace**：确认 LLM 调用已发生（真实 Key 或演示模式都会调用 ChatClient）；若配置了手动 Span 又想移除，确保线程池已配 `ContextPropagatingTaskDecorator`。
-- **MySQL 版本**：连接串含 `characterEncoding=utf8&serverTimezone=Asia/Shanghai`，需 MySQL 8.x。MyBatis-Plus 默认开启逻辑删除（`t_resume.deleted`），建表脚本已包含对应字段。
-
+- **启动报 Redis 连接失败**：`docker compose up -d redis`；Redis 不可用时 SSE 降级为本机直推，不阻塞主流程。
+- **LLM 节点全部失败**：确认 `DASHSCOPE_API_KEY` 已配置（本项目已移除演示模式，无 Key 会直接报错）。
+- **`人工复核检查点已过期`**：Checkpoint 已不存在（Redis 模式超 TTL 或数据被清理），只能重新发起审查。
+- **重新复核后报告没更新**：确认 `checkpoint-store` 与发起审查时一致（切换 Redis / MySQL 会导致找不到历史 Checkpoint）。
+- **进度条一直 0%**：前端需用 `addEventListener('topology'/'node'/'task', ...)` 监听自定义事件名（不是 `onmessage`），且 SSE URL 的 `taskId` 必须是字符串。
+- **流程面板首尾节点不显示**：`__START__` / `__END__` 依赖 `node` 类型事件更新，仅 `task` 事件不会刷新面板。
+- **Milvus 未启动**：`.env` 设 `VECTORSTORE_TYPE=none` 即可关闭向量检索，不影响审查主流程。
+- **Langfuse 报 404**：OTLP 端点必须含 `/api/public/otel`，且用 Basic Auth 认证。
+- **MySQL 端口**：compose 映射到宿主机 `3307`，`.env` 里的 `MYSQL_URL` 要同步改；容器内后端用的是服务名 `mysql:3306`。

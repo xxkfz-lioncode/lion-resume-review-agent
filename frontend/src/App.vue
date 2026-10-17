@@ -207,6 +207,7 @@ function startResizeY(event, area) {
 
 function onApproved() {
   store.streamingText = ''
+  store.report = null
   store.pushLog('HR 已确认评分，等待报告生成…')
 }
 
@@ -308,6 +309,7 @@ onBeforeUnmount(() => eventSource && eventSource.close())
       v-model:visible="store.reviewVisible"
       :task-id="store.taskId"
       :pending-data="store.pendingReview"
+      :reopen="store.taskStatus === 'COMPLETED'"
       @approved="onApproved"
     />
 

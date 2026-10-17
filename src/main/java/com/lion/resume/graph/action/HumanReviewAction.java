@@ -62,7 +62,6 @@ public class HumanReviewAction extends BaseTrackingAction implements Interruptab
         pushData.put(GraphStateKeys.RADAR_DATA, data.get(GraphStateKeys.RADAR_DATA));
         pushData.put(GraphStateKeys.OVERALL_SCORE, overall);
         pushData.put(GraphStateKeys.DIAGNOSIS_SUMMARY, data.getOrDefault(GraphStateKeys.DIAGNOSIS_SUMMARY, ""));
-        pushData.put("borderline", props.getBorderlineScore());
 
         eventPublisher.publish(GraphStatusEvent.builder()
                 .type("node")
@@ -75,7 +74,7 @@ public class HumanReviewAction extends BaseTrackingAction implements Interruptab
                 .timestamp(System.currentTimeMillis())
                 .build());
 
-        log.info("人工复核触发: taskId={}, overall={}, threshold={}", taskId, overall, props.getBorderlineScore());
+        log.info("人工复核触发: taskId={}, overall={}", taskId, overall);
 
         // 返回值合并进 OverAllState：needs_human_review 供报告生成判断，review_reason 给前端展示
         Map<String, Object> result = new HashMap<>();

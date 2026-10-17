@@ -24,8 +24,7 @@ public class GraphEventPublisher {
     public void publish(GraphStatusEvent event) {
         boolean published = false;
         try {
-            stringRedisTemplate.convertAndSend(RedisPubSubConfig.GRAPH_EVENT_CHANNEL,
-                    JSONUtil.toJsonStr(event));
+            stringRedisTemplate.convertAndSend(RedisPubSubConfig.GRAPH_EVENT_CHANNEL, JSONUtil.toJsonStr(event));
             published = true;
         } catch (Exception e) {
             log.warn("Redis 广播 Graph 事件失败，降级为本机直推: {}", e.getMessage());
