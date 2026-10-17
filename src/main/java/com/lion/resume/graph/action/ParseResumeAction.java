@@ -2,6 +2,7 @@ package com.lion.resume.graph.action;
 
 import cn.hutool.json.JSONObject;
 import com.alibaba.cloud.ai.graph.OverAllState;
+import com.alibaba.cloud.ai.graph.RunnableConfig;
 import cn.hutool.json.JSONUtil;
 import com.lion.resume.common.constant.GraphNodes;
 import com.lion.resume.common.constant.GraphStateKeys;
@@ -43,7 +44,7 @@ public class ParseResumeAction extends BaseTrackingAction {
     }
 
     @Override
-    protected Map<String, Object> doExecute(OverAllState state) {
+    protected Map<String, Object> doExecute(OverAllState state, RunnableConfig config) {
         Map<String, Object> data = state.data();
         Long resumeId = Long.valueOf(String.valueOf(data.get(GraphStateKeys.RESUME_ID)));
         Resume resume = resumeService.getById(resumeId);

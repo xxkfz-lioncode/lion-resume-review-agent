@@ -1,6 +1,7 @@
 package com.lion.resume.graph.action;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
+import com.alibaba.cloud.ai.graph.RunnableConfig;
 import cn.hutool.json.JSONUtil;
 import com.lion.resume.common.constant.GraphStateKeys;
 import com.lion.resume.component.TaskProgressService;
@@ -38,7 +39,7 @@ public abstract class AbstractScoringAction extends BaseTrackingAction {
     protected abstract String reviewFocus();
 
     @Override
-    protected Map<String, Object> doExecute(OverAllState state) {
+    protected Map<String, Object> doExecute(OverAllState state, RunnableConfig config) {
         Map<String, Object> data = state.data();
         Map<String, Object> resume = castMap(data.get(GraphStateKeys.RESUME_CONTENT));
         String jobDesc = String.valueOf(data.getOrDefault(GraphStateKeys.JOB_DESCRIPTION, ""));

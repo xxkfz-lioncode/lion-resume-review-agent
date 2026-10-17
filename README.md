@@ -17,7 +17,7 @@
 <p>
   <a href="#核心功能">核心功能</a> ·
   <a href="#项目亮点">项目亮点</a> ·
-  <a href="#graph-实战从零上手">Graph 实战</a> ·
+  <a href="#graph-实战教程">Graph 实战</a> ·
   <a href="#快速启动">快速启动</a> ·
   <a href="#环境变量配置">环境变量</a> ·
   <a href="#常见问题">常见问题</a>
@@ -27,7 +27,7 @@
 
 ---
 
-基于 **Spring AI Alibaba Graph** 构建的 AI 简历审查系统。用 7 节点状态机编排「简历解析 → 技能 / 项目 / 文化并行评分 → 综合诊断 → 人工复核 → 生成报告」全链路，人工复核节点通过官方 `InterruptableAction` 真正挂起并落盘 Checkpoint，HR 确认后从断点续跑；全流程状态通过 Redis Pub/Sub + SSE 实时推送到前端。
+基于 **Spring AI Alibaba Graph** 构建的 AI 简历审查系统。用 7 节点状态机编排「简历解析 → 技能 / 项目 / 文化并行评分 → 综合诊断 → 人工复核 → 生成报告」全链路，人工复核节点通过官方 `InterruptableAction` 真正挂起并落盘 Checkpoint，HR 确认后从断点续跑；全流程状态通过 Redis Pub/Sub + SSE 实时推送到前端；每个节点的耗时 / 状态经 `GraphLifecycleListener` 扩展点自动落库，可在「日志查询」页面按甘特时间轴复盘整条流程的耗时。
 
 ---
 
@@ -58,6 +58,12 @@
 - `ContextPropagatingTaskDecorator` 自动传播 OTel trace context，HTTP → Graph 节点 → LLM 调用形成完整链路，导出到 Langfuse。
 - 所有密钥通过环境变量注入（`.env` 加载），`application.yml` 中无明文密钥。
 
+### 5. 节点执行日志与耗时分析
+
+- 每个节点的耗时、状态、错误信息由 `GraphLifecycleListener` 扩展点**自动落库**到 `t_graph_node_log`，业务节点零侵入。
+- 前端独立「日志查询」页面：甘特式时间轴横向展示每个节点的**开始时刻 + 耗时**，一眼看出三个评分节点的并行关系与瓶颈节点。
+- 支持按任务 / 状态 / 节点筛选，可一键隐藏框架内部路由节点（如 `xxx__(parse_resume)`）。
+
 ---
 
 ## 项目亮点
@@ -67,6 +73,8 @@
 - **Checkpoint 回溯能力**：`reapprove` 通过 `checkpointSaver.list(threadId)` 过滤 `human_review` 检查点，支持已完成任务的重新复核。
 - **并行 fan-out / fan-in**：`parse_resume` 三条出边触发并行评分，三个节点汇聚到 `synthesis` 形成屏障，显著降低耗时。
 - **声明式状态合并策略**：`KeyStrategyFactory` 配置 `AppendStrategy`（warnings 累积）/ `ReplaceStrategy`（评分覆盖）/ `CustomStrategy` 自定义规则。
+- **零侵入节点可观测**：基于框架 `GraphLifecycleListener` 自建监听器链（桥接器 + `NodeExecutionListener`），计时 / 落库 / 推送按 `@Order` 编排，新增能力只写一个实现类，业务节点完全无感知。
+- **异步隔离的日志落库**：`NodeLogPersistListener` 走独立线程池（与 Graph 线程池隔离）且自带 try-catch，写库失败只告警、绝不阻断审查主流程。
 - **断点恢复状态兜底**：恢复时以 DB 为权威来源补齐 `taskId` / `resumeId` / `job_description` / 简历原文，防止 Checkpoint 序列化丢失未注册字段。
 - **幂等 CAS 状态机**：恢复前用 MyBatis-Plus 条件更新抢占状态，避免 HR 重复点击导致两次恢复、双倍 LLM 开销。
 - **多实例事件广播**：`GraphEventPublisher → Redis Pub/Sub → SseEmitterManager` 架构，后端可无状态横向扩展。
@@ -99,8 +107,8 @@
 | --- | --- | --- |
 | `StateGraph` | 定义节点与边的有向图 | `ResumeReviewGraph` 装配 7 个节点 |
 | `OverAllState` | 全局共享状态 | 承载简历原文 / 评分 / 雷达图 / 复核意见 |
-| `NodeAction` | 同步节点：`Map apply(OverAllState)` | 项目节点经 `BaseTrackingAction` 间接实现 |
-| `AsyncNodeActionWithConfig` | 异步节点，可拿到 `RunnableConfig` | 需要读线程配置时用 |
+| `NodeAction` | 同步节点：`Map<String,Object> apply(OverAllState)` | 框架基础形态，本项目未直接使用 |
+| `AsyncNodeActionWithConfig` | 异步节点 + 运行配置：`CompletableFuture<Map<String,Object>> apply(OverAllState, RunnableConfig)` | `BaseTrackingAction` 实现的接口，本项目所有业务节点都用它 |
 | `EdgeAction` | 条件边路由：`String apply(OverAllState)` | 返回目标节点名 |
 | `KeyStrategyFactory` | 声明每个状态键的合并策略 | `GraphConfig` |
 | `CompileConfig` + `SaverConfig` | 编译期配置（注入 Checkpoint 存储） | 注入 `BaseCheckpointSaver` |
@@ -108,6 +116,7 @@
 | `RunnableConfig` | 运行时配置：`threadId` / `checkPointId` / `nextNode` / `resume()` | `threadId = taskId` |
 | `BaseCheckpointSaver` | Checkpoint 持久化抽象 | `RedisSaver` / `MysqlSaver` |
 | `InterruptableAction` | 节点级中断：`interrupt()` / `interruptAfter()` | `HumanReviewAction` |
+| `GraphLifecycleListener` | 节点生命周期回调：`onStart` / `before` / `after` / `onError` / `onComplete` | `GraphNodeLifecycleBridge` 桥接到自研监听器链 |
 
 ### 3. State：全局状态与合并策略
 
@@ -163,7 +172,7 @@ AsyncNodeActionWithConfig asyncNode = (state, config) ->
 workflow.addNode("sub_flow", subStateGraph);
 ```
 
-本项目把「计时、重试、事件上报、异常兜底」抽到抽象基类 `BaseTrackingAction`（模板方法），业务节点只实现 `doExecute()`，因此评分节点可以极简：
+本项目把「计时、重试、事件上报、异常兜底」抽到抽象基类 `BaseTrackingAction`（模板方法），业务节点只实现 `doExecute(state, config)`，因此评分节点可以极简：
 
 ```java
 @Component
@@ -174,6 +183,38 @@ public class SkillScoringAction extends AbstractScoringAction {
     @Override protected String reviewFocus()    { return "技能与岗位的匹配程度：技术栈、工具链、行业知识是否与岗位要求对齐"; }
 }
 ```
+
+**为什么基类选 `AsyncNodeActionWithConfig` 而不是 `AsyncNodeAction`**
+
+每个节点都要拿 `taskId` 去更新任务进度、推送 SSE。如果一律从 `OverAllState` 读，就必须保证 `task_id` 在 `KeyStrategyFactory` 注册过，否则 Checkpoint 往返后会丢失（见踩坑清单）。
+而发起执行时显式指定了 `threadId = taskId`，框架执行时会把 `RunnableConfig` 透传给节点，所以**身份类字段直接从配置里取最可靠**：
+
+```java
+// BaseTrackingAction
+@Override
+public CompletableFuture<Map<String, Object>> apply(OverAllState state, RunnableConfig config) {
+    String taskId = resolveTaskId(state, config);   // 优先 config.threadId()
+    String safeTaskId = (taskId == null || taskId.isBlank()) ? "unknown" : taskId;
+    ...
+    Map<String, Object> result = doExecute(state, config);   // 业务节点同样能拿到 config
+}
+
+protected String resolveTaskId(OverAllState state, RunnableConfig config) {
+    if (config != null && config.threadId() != null) {
+        String tid = config.threadId().orElse(null);
+        // threadId 与 taskId 同源，由框架沿调用链传递，不依赖 State 往返
+        if (tid != null && !tid.isBlank()) return tid;
+    }
+    if (state != null && state.data() != null) {         // 兼容手工调用 / 单元测试
+        Object v = state.data().get(GraphStateKeys.TASK_ID);
+        if (v != null) return String.valueOf(v);
+    }
+    // 不用 String.valueOf(...)：null 会变成字符串 "null"，导致按 id 查询全部落空
+    return null;
+}
+```
+
+> **分工**：身份/运行类字段（`taskId` / `threadId` / 中断标记）走 `RunnableConfig`；业务数据（简历原文、评分、岗位描述）仍走 `OverAllState`。
 
 ### 5. Edge：普通边、并行边、条件边
 
@@ -372,7 +413,158 @@ RunnableConfig config = RunnableConfig.builder()
 ⑧ END                 任务置 COMPLETED，报告落库
 ```
 
-### 11. 踩坑清单
+### 11. 节点横切逻辑：GraphLifecycleListener 扩展
+
+**为什么需要它**：节点的「开始 / 结束 / 异常」时机只有框架自己知道。如果在节点里手写 `try-finally` 记耗时、写日志、推状态，7 个节点会各写一遍，还和业务逻辑缠在一起。`GraphLifecycleListener` 就是官方留给你的横切扩展点。
+
+**一句话概括**：框架回调（`before` / `after` / `onError`）→ 桥接器翻译成自研上下文 → 按 `@Order` 分发给一堆监听器。
+
+| 组成 | 是什么 | 本项目实现 |
+| --- | --- | --- |
+| `GraphLifecycleListener` | 框架回调接口：`onStart` / `before` / `after` / `onError` / `onComplete` | `GraphNodeLifecycleBridge`（全局唯一对接点） |
+| `NodeExecutionContext` | 自研上下文：承载 taskId / userId / threadId / nodeId / 耗时 / 状态 / 错误 | `NodeExecutionContext` |
+| `NodeExecutionListener` | 自研监听器接口：`before` / `after` / `onError`，继承 `Ordered` | 计时 / 落库 / 推送三个实现 |
+| `@Order` | 监听器执行顺序 | 计时(0) → 落库(100) → 推送(200) |
+
+> 只让**一个类**去实现框架接口，框架 API 变动时只改这个类，业务监听器一个都不用动 —— 这就是这层设计的价值。
+
+**① 桥接器：框架回调 → 自研上下文**
+
+每个节点 `before` 时创建上下文并记起始时间戳，`after` / `onError` 时算耗时、移除上下文，再分发给监听器：
+
+```java
+@Override
+public void before(String nodeId, Map<String, Object> state, RunnableConfig config, Long time) {
+    String taskId = String.valueOf(state.getOrDefault(GraphStateKeys.TASK_ID, "unknown"));
+    String userId = String.valueOf(state.getOrDefault(GraphStateKeys.USER_ID, "system"));
+    NodeExecutionContext ctx = new NodeExecutionContext(
+            taskId, userId, config.threadId().orElse("unknown"), nodeId, state,
+            config.isInterrupted(nodeId));
+    ctx.markStart(System.nanoTime());
+    running.put(key(config, nodeId), ctx);      // threadId + nodeId 隔离
+    dispatch(l -> l.before(ctx));
+}
+
+@Override
+public void after(String nodeId, Map<String, Object> state, RunnableConfig config, Long time) {
+    NodeExecutionContext ctx = running.remove(key(config, nodeId));
+    if (ctx == null) return;
+    ctx.finish(NodeStatus.COMPLETED, System.nanoTime());
+    dispatch(l -> l.after(ctx));
+}
+```
+
+耗时用 `System.nanoTime()` 自管计时（不受系统时钟回拨影响），在 `NodeExecutionContext.finish()` 里换算成毫秒。
+
+> **关键时序**：`ctx.finish()`（算耗时）在 `dispatch()` **之前**执行，所以所有监听器拿到的 `ctx.getDurationMs()` 都已经是终值，**与 `@Order` 无关**。监听器里不要重复计时，直接读即可。
+
+**② 挂载到编译期**
+
+```java
+return workflow.compile(CompileConfig.builder()
+        .saverConfig(SaverConfig.builder().register(checkpointSaver).build())
+        .withLifecycleListener(lifecycleBridge)   // ← 生命周期回调入口
+        .build());
+```
+
+> 和 `BaseCheckpointSaver` 一样，必须在**编译期**注入，不是运行时参数。
+
+**③ 监听器接口：横切能力的唯一扩展点**
+
+```java
+public interface NodeExecutionListener extends Ordered {
+    default void before(NodeExecutionContext ctx) {}
+    default void after(NodeExecutionContext ctx) {}
+    default void onError(NodeExecutionContext ctx) {}
+}
+```
+
+三条约定（写新监听器时必须遵守）：
+
+1. **用 `@Order` 编排顺序**：Spring 注入 `List<NodeExecutionListener>` 时已按 `@Order` 升序排好，桥接器依次调用；计时监听器排最前(0)是为了让耗时日志最先打印，**不是为了"算出"耗时**。
+2. **内部自己 try-catch**：单个监听器异常不得影响主流程（桥接器 `dispatch` 也做了二次兜底）。
+3. **`ctx` 可能为 `null`**：异常发生在 `before` 之前时上下文还没建，必须判空。
+
+**④ 三个内置监听器**
+
+| `@Order` | 实现类 | 职责 | 开关 |
+| --- | --- | --- | --- |
+| 0 | `NodeTimingListener` | 打印节点级耗时日志（耗时由桥接器 `finish()` 计算，此处只读） | 常开 |
+| 100 | `NodeLogPersistListener` | 耗时 / 状态 / 错误写入 `t_graph_node_log` | `resume.node-listeners.node-log` |
+| 200 | `ProgressPushListener` | 节点开始前推 `running`、异常推 `error`（SSE） | `resume.node-listeners.progress-push` |
+
+开关用 `@ConditionalOnProperty`，在 `application.yml` 里关掉即不注册 Bean，无需改代码：
+
+```yaml
+resume:
+  node-listeners:
+    progress-push: true
+    node-log: true
+```
+
+**⑤ 落库监听器（耗时数据从哪来）**
+
+```java
+@Override
+public void after(NodeExecutionContext ctx)   { persist(ctx); }
+@Override
+public void onError(NodeExecutionContext ctx) { persist(ctx); }
+
+private void persist(NodeExecutionContext ctx) {
+    if (ctx == null) return;
+    nodeLogExecutor.execute(() -> {          // 独立线程池，与 Graph 线程池隔离
+        try {
+            NodeLog logEntity = new NodeLog();
+            logEntity.setId(UUID.randomUUID().toString().replace("-", ""));
+            logEntity.setTaskId(ctx.getTaskId());
+            logEntity.setUserId(ctx.getUserId());
+            logEntity.setNodeId(ctx.getNodeId());
+            logEntity.setStatus(ctx.getStatus() == null ? null : ctx.getStatus().getValue());
+            logEntity.setDurationMs(ctx.getDurationMs());
+            logEntity.setErrorMsg(ctx.getErrorMessage());
+            // 结束时间即当前时刻，开始时间由耗时反推
+            logEntity.setStartTime(LocalDateTime.now().minusNanos(
+                    ctx.getDurationMs() == null ? 0 : ctx.getDurationMs() * 1_000_000L));
+            logEntity.setEndTime(LocalDateTime.now());
+            nodeLogMapper.insert(logEntity);
+        } catch (Exception e) {
+            log.warn("节点执行日志落库失败 taskId={} node={}", ctx.getTaskId(), ctx.getNodeId(), e);
+        }
+    });
+}
+```
+
+`userId` 取自 `OverAllState` 的 `USER_ID` 键，它由 `startReview` 在**请求线程**里从 Sa-Token `StpUtil.getLoginId()` 取出后写进 State —— Graph 跑在异步线程池里，没有 HTTP 请求，那里读不到登录态。
+
+**⑥ 新增一个监听器有多简单**
+
+只写一个实现类并注册为 Bean，业务节点零改动（示意）：
+
+```java
+@Component
+@Order(300)                       // 排在落库之后
+public class SlowNodeAlarmListener implements NodeExecutionListener {
+    @Override
+    public void after(NodeExecutionContext ctx) {
+        if (ctx.getDurationMs() != null && ctx.getDurationMs() > 5000) {
+            // 慢节点告警：可接钉钉 / Prometheus，异常自行吞掉不影响主流程
+        }
+    }
+}
+```
+
+**⑦ 并行节点的线程安全**
+
+三个评分节点并发执行，同一时刻会有多个上下文同时存在。桥接器用 `ConcurrentHashMap` 以 `threadId + nodeId` 为 key 隔离，并且**每次 `after` / `onError` 必须 `remove`**，否则中断场景下上下文会堆积。
+
+**⑧ 数据落到哪里、怎么看**
+
+`t_graph_node_log` 每行 = 一次节点执行：`task_id` / `user_id` / `thread_id` / `node_id` / `attempt` / `status` / `start_time` / `end_time` / `duration_ms` / `error_msg`。
+前端「日志查询」页面按任务读取，用 ECharts 堆叠柱状图渲染成**甘特式时间轴**：横条起点 = 相对流程开始的时刻，长度 = 耗时，颜色区分成功 / 失败 / 挂起。
+
+> 表里会出现 `xxx__(parse_resume)` 这类**框架内部路由节点**（条件分支、并行聚合、中断检查点生成），不是业务节点；统计节点数时可用「隐藏框架内部节点」开关过滤。
+
+### 12. 踩坑清单
 
 1. **业务字段必须在 `KeyStrategyFactory` 注册**，否则 `updateState / resume` 会丢失该键。
 2. 恢复时 `stream(inputs, config)` 的 `inputs` 要传**完整状态**，为未注册字段兜底；关键字段以 DB 为权威来源覆盖写入。
@@ -382,6 +574,8 @@ RunnableConfig config = RunnableConfig.builder()
 6. 不要 `releaseThread()`，交给 TTL / 存储过期回收更可靠。
 7. 中断时 `stream()` 也会触发 `doOnComplete`，完成回调里要用 DB 状态区分「真完成」和「挂起」。
 8. 并行节点写同一键必须有 `AppendStrategy` 之类的合并策略，否则互相覆盖。
+9. 生命周期回调里**不要做重活**：`after` 是在节点执行线程上同步调用的，写库 / 推送要丢到独立线程池，否则拖慢每个节点。
+10. 日志里出现 `xxx__(节点名)` 是框架内部路由节点，不是业务节点，统计节点数时需过滤。
 
 ---
 
@@ -461,6 +655,8 @@ npm run dev
 - **`人工复核检查点已过期`**：Checkpoint 被清理或 TTL 过期，只能重新发起审查。
 - **重新复核后没反应**：确认 `checkpoint-store` 与发起时一致；Redis 和 MySQL 的 Checkpoint 不互通。
 - **进度条不更新**：前端需监听自定义事件名 `topology` / `node` / `task` / `stream`（不是 `onmessage`）。
+- **报 `Unknown column 'user_id' in 'field list'`**：老库未做迁移。需对 `t_review_task` 补列并建 `t_graph_node_log` 表（脚本见 `src/main/resources/schema.sql`）。
+- **日志查询页是空的**：确认 `resume.node-listeners.node-log=true`（默认开启）且 `t_graph_node_log` 已建表；日志是节点**执行完**才落库的，运行中查不到。
 - **Milvus 不想启动**：`.env` 中设置 `VECTORSTORE_TYPE=none`。
 - **Langfuse 404**：OTLP 端点必须含 `/api/public/otel`，认证用 Basic Auth `base64(pk:sk)`。
 

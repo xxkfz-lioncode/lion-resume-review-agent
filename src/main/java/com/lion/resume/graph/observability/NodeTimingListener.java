@@ -5,10 +5,13 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * 耗时统计监听器：节点执行前后用 {@code System.nanoTime()} 计算耗时并记录日志。
+ * 耗时统计监听器：打印每个节点的执行耗时日志。
  *
- * <p>不使用回调的 {@code Long} 时间戳参数（其语义随版本可能变化），统一自管计时，最稳。
- * 这是所有监听器中顺序最靠前（order=0）的，先拿到真实耗时，后续监听器读 {@code ctx.getDurationMs()} 即可。
+ * <p>耗时本身由 {@link GraphNodeLifecycleBridge} 计算：{@code before} 时 {@code markStart()}，
+ * {@code after} / {@code onError} 时 {@code finish()}，且发生在分发给监听器<strong>之前</strong>。
+ * 因此本监听器（以及后续所有监听器）读到的 {@code ctx.getDurationMs()} 都已是终值，无需重复计时。
+ *
+ * <p>{@code @Order(0)} 排在最前，仅用于让耗时日志先于落库 / 推送日志打印，便于按时间顺序阅读。
  */
 @Slf4j
 @Component

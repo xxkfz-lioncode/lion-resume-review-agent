@@ -48,8 +48,7 @@ public class ReviewController {
      */
     @PostMapping("/start")
     public R<Map<String, Object>> start(@RequestBody StartReviewRequest request) {
-        String taskId = reviewTaskService.startReview(request.getResumeId(),
-                request.getJobDescription());
+        String taskId = reviewTaskService.startReview(request.getResumeId(), request.getJobDescription());
         return R.ok(Map.of("taskId", taskId));
     }
 

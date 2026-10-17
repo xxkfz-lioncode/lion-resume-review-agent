@@ -49,9 +49,10 @@ public class HumanReviewAction extends BaseTrackingAction implements Interruptab
     }
 
     @Override
-    protected Map<String, Object> doExecute(OverAllState state) {
+    protected Map<String, Object> doExecute(OverAllState state, RunnableConfig config) {
         Map<String, Object> data = state.data();
-        String taskId = String.valueOf(data.get(GraphStateKeys.TASK_ID));
+        // 从 RunnableConfig 取任务ID（threadId = taskId），不再依赖 State 里的 task_id
+        String taskId = resolveTaskId(state, config);
         double overall = AbstractScoringAction.toScore(data.get(GraphStateKeys.OVERALL_SCORE), 3.0);
 
         // 无条件进入人工复核：先落库状态，再推送 pending 事件（真正的挂起在 interruptAfter）
@@ -106,8 +107,7 @@ public class HumanReviewAction extends BaseTrackingAction implements Interruptab
      * 等待 {@code ReviewTaskService#approve} 恢复后才流向 generate_report。
      */
     @Override
-    public Optional<InterruptionMetadata> interruptAfter(String nodeId, OverAllState state,
-                                                         Map<String, Object> result,
+    public Optional<InterruptionMetadata> interruptAfter(String nodeId, OverAllState state, Map<String, Object> result,
                                                          RunnableConfig config) {
         return Optional.of(InterruptionMetadata.builder(nodeId, state).build());
     }

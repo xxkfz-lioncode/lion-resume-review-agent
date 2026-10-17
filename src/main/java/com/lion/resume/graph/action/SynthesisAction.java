@@ -1,6 +1,7 @@
 package com.lion.resume.graph.action;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
+import com.alibaba.cloud.ai.graph.RunnableConfig;
 import cn.hutool.json.JSONUtil;
 import com.lion.resume.common.constant.GraphNodes;
 import com.lion.resume.common.constant.GraphStateKeys;
@@ -39,7 +40,7 @@ public class SynthesisAction extends BaseTrackingAction {
     }
 
     @Override
-    protected Map<String, Object> doExecute(OverAllState state) {
+    protected Map<String, Object> doExecute(OverAllState state, RunnableConfig config) {
         Map<String, Object> data = state.data();
 
         // 键名必须与 AbstractScoringAction 写入时一致（scoreKey = 节点ID + "_score"），

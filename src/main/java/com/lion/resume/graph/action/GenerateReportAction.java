@@ -1,6 +1,7 @@
 package com.lion.resume.graph.action;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
+import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.lion.resume.common.constant.GraphNodes;
 import com.lion.resume.common.constant.GraphStateKeys;
 import com.lion.resume.component.TaskProgressService;
@@ -36,11 +37,11 @@ public class GenerateReportAction extends BaseTrackingAction {
     }
 
     @Override
-    protected Map<String, Object> doExecute(OverAllState state) {
+    protected Map<String, Object> doExecute(OverAllState state, RunnableConfig config) {
         Map<String, Object> data = state.data();
-        // 不用 String.valueOf（null 会变成字符串 "null"，导致后续按 id 查询全部落空）
-        Object rawTaskId = data.get(GraphStateKeys.TASK_ID);
-        String taskId = (rawTaskId == null) ? null : String.valueOf(rawTaskId);
+        // 优先从 RunnableConfig.threadId() 取（发起时 threadId = taskId），不依赖 State 往返；
+        // 取不到返回 null，不用 String.valueOf（否则 "null" 会导致按 id 查询全部落空）
+        String taskId = resolveTaskId(state, config);
         boolean approved = Boolean.TRUE.equals(data.get(GraphStateKeys.APPROVED));
 
         ReviewReport report = reportService.generate(taskId, data,
