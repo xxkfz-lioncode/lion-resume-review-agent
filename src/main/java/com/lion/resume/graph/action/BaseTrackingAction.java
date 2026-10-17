@@ -35,25 +35,27 @@ public abstract class BaseTrackingAction implements AsyncNodeAction {
     public CompletableFuture<Map<String, Object>> apply(OverAllState state) {
         Map<String, Object> data = state.data();
         String taskId = String.valueOf(data.getOrDefault(GraphStateKeys.TASK_ID, "unknown"));
-        progressService.onNodeStart(taskId, nodeId());
+        // 节点「开始前推送」已下放到 ProgressPushListener（GraphLifecycleListener 桥接），
+        // 本类只负责业务执行、重试、以及「完成」事件（完成需携带节点返回值，仍在此处推送）。
 
         int attempt = 0;
         while (true) {
             try {
                 Map<String, Object> result = doExecute(state);
                 if (emitCompleteEvent(result)) {
-                    // 推送完成标志
+                    // 推送完成标志（含节点返回值，供前端展示评分）
                     progressService.onNodeComplete(taskId, nodeId(), result);
                 }
                 return CompletableFuture.completedFuture(result);
             } catch (Exception e) {
                 attempt++;
                 log.warn("节点[{}]执行失败(第{}次): {}", nodeId(), attempt, e.getMessage());
-                progressService.onNodeError(taskId, nodeId(), e.getMessage(), attempt);
+                // 最终失败：抛出异常交由框架 onError → ProgressPushListener 推送 error 事件
                 if (attempt >= props.getLlmRetryTimes()) {
                     return CompletableFuture.failedFuture(
                             new RuntimeException("节点[" + nodeId() + "]执行失败: " + e.getMessage(), e));
                 }
+                // 重试前推送 retrying 事件（每轮重试一次，监听器无法感知尝试次数，故保留此处）
                 progressService.onNodeRetry(taskId, nodeId(), attempt);
                 try {
                     Thread.sleep(props.getLlmRetryDelayMs() * attempt);

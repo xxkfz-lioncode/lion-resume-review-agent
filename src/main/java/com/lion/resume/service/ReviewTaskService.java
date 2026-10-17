@@ -7,6 +7,7 @@ import com.alibaba.cloud.ai.graph.checkpoint.Checkpoint;
 import com.alibaba.cloud.ai.graph.state.StateSnapshot;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import cn.dev33.satoken.stp.StpUtil;
 import com.lion.resume.common.constant.GraphNodes;
 import com.lion.resume.common.constant.GraphStateKeys;
 import com.lion.resume.common.enums.NodeStatus;
@@ -84,10 +85,12 @@ public class ReviewTaskService {
         Long resumeId = Long.valueOf(resumeIdStr);
         Resume resume = resumeService.getById(resumeId);
 
+        String userId= String.valueOf(StpUtil.getLoginId());
         String taskId = UUID.randomUUID().toString().replace("-", "");
         ReviewTask task = new ReviewTask();
         task.setId(taskId);
         task.setResumeId(resumeId);
+        task.setUserId(userId);
         task.setJobDescription(jobDescription == null ? "" : jobDescription);
         task.setStatus("RUNNING");
         task.setProgress(0);
@@ -109,6 +112,7 @@ public class ReviewTaskService {
         Map<String, Object> initialState = new HashMap<>();
         initialState.put(GraphStateKeys.TASK_ID, taskId);
         initialState.put(GraphStateKeys.RESUME_ID, resumeId);
+        initialState.put(GraphStateKeys.USER_ID, task.getUserId());
         initialState.put(GraphStateKeys.JOB_DESCRIPTION, jobDescription == null ? "" : jobDescription);
         initialState.put(GraphStateKeys.NEEDS_HUMAN_REVIEW, false);
         initialState.put(GraphStateKeys.APPROVED, false);
@@ -430,9 +434,12 @@ public class ReviewTaskService {
             markFailed(taskId, "任务不存在，无法恢复");
             throw new BizException(404, "任务不存在: " + taskId);
         }
-        // DB 权威值覆盖：不信任 Checkpoint 中的这两个字段
+        // DB 权威值覆盖：不信任 Checkpoint 中的这些字段
         state.put(GraphStateKeys.TASK_ID, taskId);
         state.put(GraphStateKeys.RESUME_ID, dbTask.getResumeId());
+        if (dbTask.getUserId() != null) {
+            state.put(GraphStateKeys.USER_ID, dbTask.getUserId());
+        }
         if (dbTask.getJobDescription() != null) {
             state.put(GraphStateKeys.JOB_DESCRIPTION, dbTask.getJobDescription());
         }

@@ -47,6 +47,7 @@ public class GraphConfig {
         replace(map,
                 GraphStateKeys.TASK_ID,
                 GraphStateKeys.RESUME_ID,
+                GraphStateKeys.USER_ID,
                 GraphStateKeys.JOB_DESCRIPTION,
                 GraphStateKeys.RESUME_CONTENT,
                 GraphStateKeys.RESUME_TEXT,

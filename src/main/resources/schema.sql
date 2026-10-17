@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS t_resume (
 CREATE TABLE IF NOT EXISTS t_review_task (
     id              VARCHAR(64) PRIMARY KEY COMMENT '任务ID(对外暴露,用于SSE订阅)',
     resume_id       BIGINT       NOT NULL COMMENT '简历ID',
+    user_id         VARCHAR(64)  COMMENT '操作用户ID',
     job_description TEXT COMMENT '岗位描述',
     status          VARCHAR(32)  DEFAULT 'PENDING' COMMENT '任务状态',
     progress        INT          DEFAULT 0 COMMENT '整体进度 0-100',
@@ -48,3 +49,21 @@ CREATE TABLE IF NOT EXISTS t_review_report (
     update_time        TIMESTAMP   DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
     KEY idx_report_task (task_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审查报告';
+
+-- 节点执行日志表（Graph 每个节点的耗时 / 状态 / 错误，用于观测与后续告警）
+CREATE TABLE IF NOT EXISTS t_graph_node_log (
+    id           VARCHAR(64)  PRIMARY KEY COMMENT '主键(UUID去横杠)',
+    task_id      VARCHAR(64)  NOT NULL COMMENT '业务任务ID',
+    user_id      VARCHAR(64)  COMMENT '操作用户ID',
+    thread_id    VARCHAR(64)  COMMENT 'Graph threadId',
+    node_id      VARCHAR(64)  NOT NULL COMMENT '节点ID',
+    attempt      INT          DEFAULT 1 COMMENT '尝试次数(含重试)',
+    status       VARCHAR(16)  COMMENT 'RUNNING/COMPLETED/ERROR',
+    start_time   DATETIME(3)  COMMENT '节点开始时间',
+    end_time     DATETIME(3)  COMMENT '节点结束时间',
+    duration_ms  BIGINT       COMMENT '耗时(ms)',
+    error_msg    VARCHAR(512) COMMENT '失败原因(成功为null)',
+    create_time  DATETIME(3)  DEFAULT CURRENT_TIMESTAMP(3) COMMENT '落库时间',
+    KEY idx_node_log_task (task_id, node_id),
+    KEY idx_node_log_create (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Graph 节点执行日志';

@@ -11,6 +11,10 @@ import RadarChart from './components/RadarChart.vue'
 import ReportPanel from './components/ReportPanel.vue'
 import ReportHistory from './components/ReportHistory.vue'
 import ReviewModal from './components/ReviewModal.vue'
+import NodeLogQueryView from './components/NodeLogQueryView.vue'
+
+// 顶部视图切换：审查工作台 | 日志查询
+const currentView = ref('dashboard')
 
 // ---------- 登录态（独立页面切换） ----------
 const checkLogin = async () => {
@@ -241,18 +245,26 @@ onBeforeUnmount(() => eventSource && eventSource.close())
         <el-tag size="small" type="info" effect="plain">Spring AI Alibaba Graph 多智能体工作流</el-tag>
       </div>
       <div class="header-right">
-        <el-tag v-if="store.taskId" :type="store.taskStatus === 'FAILED' ? 'danger' : 'primary'" effect="light">
+        <el-radio-group v-model="currentView" size="small">
+          <el-radio-button value="dashboard">审查工作台</el-radio-button>
+          <el-radio-button value="logs">日志查询</el-radio-button>
+        </el-radio-group>
+        <el-tag v-if="store.taskId && currentView === 'dashboard'" :type="store.taskStatus === 'FAILED' ? 'danger' : 'primary'" effect="light">
           任务状态：{{ taskStatusText }}
         </el-tag>
-        <el-button v-if="store.loggedIn" :icon="Timer" @click="reportHistoryVisible = true">
+        <el-button v-if="store.loggedIn && currentView === 'dashboard'" :icon="Timer" @click="reportHistoryVisible = true">
           历史报告
         </el-button>
         <el-button v-if="store.loggedIn" link @click="logout">{{ store.username }} · 退出</el-button>
       </div>
     </header>
 
-    <!-- 主体 -->
+    <!-- 日志查询页（独立页面） -->
+    <NodeLogQueryView v-if="currentView === 'logs'" class="log-view-slot" />
+
+    <!-- 主体：审查工作台 -->
     <main
+      v-if="currentView === 'dashboard'"
       class="app-main"
       :style="{ '--left-w': leftWidth + 'px', '--right-w': rightWidth + 'px' }"
     >
@@ -343,6 +355,13 @@ onBeforeUnmount(() => eventSource && eventSource.close())
 .logo { font-size: 22px; }
 .title { font-size: 17px; font-weight: 700; color: #303133; }
 .header-right { display: flex; align-items: center; gap: 12px; }
+
+/* 日志查询页占位（占满 header 以下区域） */
+.log-view-slot {
+  flex: 1;
+  min-height: 0;
+  display: block;
+}
 
 .app-main {
   --left-w: 320px;

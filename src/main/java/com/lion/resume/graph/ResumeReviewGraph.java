@@ -14,6 +14,7 @@ import com.lion.resume.graph.action.ParseResumeAction;
 import com.lion.resume.graph.action.ProjectScoringAction;
 import com.lion.resume.graph.action.SkillScoringAction;
 import com.lion.resume.graph.action.SynthesisAction;
+import com.lion.resume.graph.observability.GraphNodeLifecycleBridge;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
@@ -61,7 +62,8 @@ public class ResumeReviewGraph {
      * 不释放则由 TTL 自动回收，恢复链路更可靠。
      */
     @Bean
-    public CompiledGraph resumeReviewCompiledGraph(BaseCheckpointSaver checkpointSaver) throws Exception {
+    public CompiledGraph resumeReviewCompiledGraph(BaseCheckpointSaver checkpointSaver,
+                                                  GraphNodeLifecycleBridge lifecycleBridge) throws Exception {
         StateGraph workflow = new StateGraph(GraphConfig.keyStrategyFactory)
                 .addNode(GraphNodes.PARSE, parseResumeAction)
                 .addNode(GraphNodes.SKILL, skillScoringAction)
@@ -87,6 +89,7 @@ public class ResumeReviewGraph {
 
         return workflow.compile(CompileConfig.builder()
                 .saverConfig(SaverConfig.builder().register(checkpointSaver).build())
+                .withLifecycleListener(lifecycleBridge)
                 .build());
     }
 }

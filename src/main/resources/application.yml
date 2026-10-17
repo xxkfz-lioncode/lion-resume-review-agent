@@ -106,6 +106,12 @@ resume:
   checkpoint-store: mysql
   # Graph Checkpoint 保留时长(小时)：需覆盖 HR 复核的响应周期，过期后无法恢复中断的任务（仅 redis 模式生效）
   checkpoint-ttl-hours: 72
+  # 节点观测监听器开关（与业务解耦的横切逻辑，见 graph.observability 包）
+  node-listeners:
+    # 节点开始前推送 running 事件（SSE）
+    progress-push: true
+    # 节点执行日志落库（t_graph_node_log）：耗时 / 状态 / 错误，由「日志查询」页面直接查询展示
+    node-log: true
 
 # ---------- 演示账号 ----------
 # 后端代码兜底默认演示账号；生产环境用 APP_ADMIN_USERNAME / APP_ADMIN_PASSWORD 环境变量覆盖

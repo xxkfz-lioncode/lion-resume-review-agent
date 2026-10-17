@@ -23,6 +23,9 @@ public class ReviewTask {
     /** 岗位描述 */
     private String jobDescription;
 
+    /** 操作用户ID（发起审查的用户） */
+    private String userId;
+
     /** 任务状态: PENDING / RUNNING / NEEDS_REVIEW / COMPLETED / FAILED */
     private String status;
 

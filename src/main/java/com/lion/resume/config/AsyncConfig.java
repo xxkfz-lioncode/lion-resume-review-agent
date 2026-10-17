@@ -42,4 +42,19 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * 节点执行日志落库专用线程池：与业务/Graph 线程池隔离，避免写库抖动影响审查主流程。
+     */
+    @Bean(name = "nodeLogExecutor")
+    public ThreadPoolTaskExecutor nodeLogExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(8);
+        executor.setQueueCapacity(500);
+        executor.setThreadNamePrefix("node-log-");
+        executor.setTaskDecorator(new ContextPropagatingTaskDecorator());
+        executor.initialize();
+        return executor;
+    }
 }

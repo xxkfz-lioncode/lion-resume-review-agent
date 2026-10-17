@@ -30,6 +30,7 @@ const icon = computed(() => {
     default: return '○'
   }
 })
+
 </script>
 
 <template>
@@ -49,4 +50,5 @@ const icon = computed(() => {
 .status-node.is-clickable:hover {
   filter: brightness(0.96);
 }
+
 </style>

@@ -24,6 +24,9 @@ public final class GraphStateKeys {
     /** 简历ID */
     public static final String RESUME_ID = "resumeId";
 
+    /** 操作用户ID（发起审查的用户，落库 t_graph_node_log 便于按用户统计） */
+    public static final String USER_ID = "userId";
+
     /** 岗位描述 JD */
     public static final String JOB_DESCRIPTION = "job_description";
 
