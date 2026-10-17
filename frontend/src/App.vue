@@ -117,11 +117,8 @@ const fetchReport = async (taskId) => {
   try {
     const detail = await api.get(`/review/task/${taskId}`)
     store.report = detail.report
-    if (detail.task) {
-      store.taskStatus = detail.task.status
-      store.progress = detail.task.progress || store.progress
-    }
-    if (detail.topology) store.topology = detail.topology
+    // 报告已拉取到完整内容，关闭「打字机生成中」状态
+    store.streamingText = ''
   } catch (e) {
     ElMessage.error('报告拉取失败: ' + e.message)
   } finally {
@@ -228,6 +225,7 @@ const radarData = computed(() => {
 })
 
 onMounted(checkLogin)
+
 onBeforeUnmount(() => eventSource && eventSource.close())
 </script>
 
