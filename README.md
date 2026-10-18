@@ -64,32 +64,24 @@
 
   **本地自托管（推荐）**
 
-  不占用项目主 compose，手动拉起官方编排：
+  项目已内置从官方仓库提取的编排文件 `docker-compose.langfuse.yml`
+  （官方 `docker-compose.yml` 不依赖仓库内其他文件，可单独使用）。
+  端口冲突已预先改好（minio 控制台 `9091→9093`、redis `6379→6380`），
+  工程名已用顶层 `name: langfuse` 固定（否则 compose 会拿目录名当工程名，与主 compose 撞车），一条命令启动：
 
   ```bash
-  # 1. 克隆官方仓库
-  git clone https://github.com/langfuse/langfuse.git
+  # 启动
+  docker compose -f docker-compose.langfuse.yml up -d
 
-  # 2. 进入目录
-  cd langfuse
-
-  # 3. （仅首次）解决与项目主 compose 的端口冲突
-  #    编辑 docker-compose.yml，修改以下宿主端口：
-  #      minio 控制台   9091:9001  →  9093:9001
-  #      redis          6379:6379  →  6380:6379
-  #    若 3000/8123/9000/9090/5432 也被占用，按同样方式修改
-
-  # 4. 启动
-  docker compose up -d
+  # 查看日志 / 停止
+  docker compose -f docker-compose.langfuse.yml logs -f
+  docker compose -f docker-compose.langfuse.yml down
   ```
 
-  Windows CMD 同理：
+  Windows CMD 命令完全相同。
 
-  ```cmd
-  git clone https://github.com/langfuse/langfuse.git
-  cd langfuse
-  docker compose up -d
-  ```
+  > 升级 Langfuse：从 https://github.com/langfuse/langfuse 复制最新 `docker-compose.yml`
+  > 覆盖本文件，再重新应用上面两处端口改动即可。
 
   首次启动后：
 

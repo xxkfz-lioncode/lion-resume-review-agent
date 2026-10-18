@@ -2,11 +2,8 @@
 # 用法：
 #   docker compose up -d --build              # 全部（含后端，首次或改代码后加 --build）
 #   docker compose up -d mysql redis          # 仅最小依赖（本地 mvn spring-boot:run 时用）
-# 注：Langfuse 不在此编排内，使用独立的官方 compose 文件：
-#   git clone https://github.com/langfuse/langfuse.git
-#   cd langfuse
-#   编辑 docker-compose.yml 解决端口冲突（minio 9091→9093 / redis 6379→6380）
-#   docker compose up -d
+# 注：Langfuse 不在此编排内，使用同目录下独立提取的官方 compose 文件：
+#   docker compose -f docker-compose.langfuse.yml -p langfuse up -d
 # docker compose up -d
 
 
