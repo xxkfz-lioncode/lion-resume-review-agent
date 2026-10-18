@@ -57,8 +57,75 @@
 ### 4. LLM 可观测与配置安全
 
 - `LlmService` 统一封装 LLM 调用，失败自动重试 3 次 + 指数退避，并向前端推送 `retrying` 状态。
+
 - `ContextPropagatingTaskDecorator` 自动传播 OTel trace context，HTTP → Graph 节点 → LLM 调用形成完整链路，导出到 Langfuse。
-- 所有密钥通过环境变量注入（`.env` 加载），`application.yml` 中无明文密钥。
+
+- 密钥全部通过 `.env` 注入（`application.yml` 中无明文密钥）；Langfuse 支持 **Cloud** 与 **本地自托管** 两种方式。
+
+  **本地自托管（推荐）**
+
+  不占用项目主 compose，手动拉起官方编排：
+
+  ```bash
+  # 1. 克隆官方仓库
+  git clone https://github.com/langfuse/langfuse.git
+
+  # 2. 进入目录
+  cd langfuse
+
+  # 3. （仅首次）解决与项目主 compose 的端口冲突
+  #    编辑 docker-compose.yml，修改以下宿主端口：
+  #      minio 控制台   9091:9001  →  9093:9001
+  #      redis          6379:6379  →  6380:6379
+  #    若 3000/8123/9000/9090/5432 也被占用，按同样方式修改
+
+  # 4. 启动
+  docker compose up -d
+  ```
+
+  Windows CMD 同理：
+
+  ```cmd
+  git clone https://github.com/langfuse/langfuse.git
+  cd langfuse
+  docker compose up -d
+  ```
+
+  首次启动后：
+
+  1. 打开 `http://localhost:3000` 注册账号（首个用户即为管理员）
+  2. 新建项目 → **Settings → API Keys**，复制 `pk-lf-xxx` / `sk-lf-xxx`
+  3. 生成 `.env` 需要的 `LANGFUSE_AUTH_BASIC`：
+
+     ```bash
+     # 方式一：命令行生成（Git Bash / Linux）
+     printf '%s' 'pk-lf-xxx:sk-lf-xxx' | base64
+
+     # 方式二：用项目里的测试类生成
+     mvn test -Dtest=LangfuseAuthBasicTest -Dlangfuse.pk=pk-lf-xxx -Dlangfuse.sk=sk-lf-xxx
+     ```
+
+  4. 把输出的 `Basic <base64>` 复制到项目根目录 `.env`：
+
+     ```bash
+     LANGFUSE_OTLP_ENDPOINT=http://localhost:3000/api/public/otel/v1/traces
+     LANGFUSE_AUTH_BASIC=Basic xxxxxxxx
+     ```
+
+  **Langfuse Cloud**
+
+  直接在 `.env` 覆盖端点即可：
+
+  ```bash
+  LANGFUSE_OTLP_ENDPOINT=https://us.cloud.langfuse.com/api/public/otel/v1/traces
+  LANGFUSE_AUTH_BASIC=Basic xxxxxxxx
+  ```
+
+  > 后端若跑在 docker compose 容器里，`LANGFUSE_OTLP_ENDPOINT` 必须指向 `http://host.docker.internal:3000/api/public/otel/v1/traces`，主 `docker-compose.yml` 已默认配置好。
+
+![Langfuse Tracing 列表](README.assets/image-20261018115629589.png)
+
+![Langfuse Trace 详情](README.assets/image-20261018115654876.png)
 
 ### 5. 节点执行日志与耗时分析
 
@@ -704,8 +771,8 @@ npm run dev
 | `DASHSCOPE_API_KEY` | 阿里云 DashScope API Key（**必填**） | 空 |
 | `VECTORSTORE_TYPE` | `milvus` / `none`（`none` 关闭向量库） | `milvus` |
 | `MILVUS_HOST` | Milvus 地址 | `127.0.0.1` |
-| `LANGFUSE_OTLP_ENDPOINT` | Langfuse OTLP 端点（须含 `/api/public/otel`） | `https://us.cloud.langfuse.com/api/public/otel/v1/traces` |
-| `LANGFUSE_AUTH_BASIC` | Basic Auth：`Basic base64(pk:sk)` | 空 |
+| `LANGFUSE_OTLP_ENDPOINT` | Langfuse OTLP 端点（须含 `/api/public/otel`）；容器内须用 `host.docker.internal`，宿主直连用 `localhost` | `https://us.cloud.langfuse.com/api/public/otel/v1/traces` |
+| `LANGFUSE_AUTH_BASIC` | Basic Auth：`Basic base64(pk:sk)`，pk/sk 取自 Langfuse 项目 API Keys | 空 |
 | `APP_ADMIN_USERNAME` / `APP_ADMIN_PASSWORD` | 演示账号 | `admin` / `admin123` |
 
 非敏感开关在 `application.yml` 的 `resume.*` 下：`checkpoint-store`、`checkpoint-ttl-hours`、`llm-retry-times`、`llm-retry-delay-ms`、`upload-dir`。
@@ -723,6 +790,9 @@ npm run dev
 - **日志查询页是空的**：确认 `resume.node-listeners.node-log=true`（默认开启）且 `t_graph_node_log` 已建表；日志是节点**执行完**才落库的，运行中查不到。
 - **Milvus 不想启动**：`.env` 中设置 `VECTORSTORE_TYPE=none`。
 - **Langfuse 404**：OTLP 端点必须含 `/api/public/otel`，认证用 Basic Auth `base64(pk:sk)`。
+- **自托管 Langfuse 报 `port is already allocated`**：官方 compose 默认把 MinIO 控制台绑到 `9091`、Redis 绑到 `6379`，会和项目主 compose 里的 Milvus `9091` / Redis `6379` 冲突。已在 `langfuse/docker-compose.yml` 把 MinIO 控制台改到 `9093`、Redis 改到 `6380`，如还有冲突，按同样思路改宿主端口即可。
+- **自托管 Langfuse 控制台打不开**：官方栈依赖 Postgres / ClickHouse / Redis / MinIO 先 healthy，首次拉镜像 + 启动较慢属正常；用 `docker compose ps`（在 `langfuse/` 目录内）看状态、`docker compose logs -f langfuse-web` 看就绪日志。
+- **自托管看不到 trace**：① 确认已在控制台建好项目并拿到 pk/sk，且 `.env` 的 `LANGFUSE_AUTH_BASIC` 是 `Basic ` + `base64(pk:sk)`（不是裸 `pk:sk`）；② **后端跑在容器里时端点必须写 `host.docker.internal:3000`**，写 `localhost:3000` 会指向容器自己（`docker-compose.yml` 已配好默认值并加了 `extra_hosts`）；③ 忘了加 `x-langfuse-ingestion-version: 4` 请求头会让 OTel 数据最多延迟 10 分钟入库（配置里已加）。
 
 ---
 

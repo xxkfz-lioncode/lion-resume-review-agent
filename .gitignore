@@ -18,6 +18,9 @@ data/
 # 环境变量（含密钥，勿提交；模板见 .env.example）
 .env
 
+# Langfuse 官方仓库（由 scripts/start-langfuse.* 克隆，勿提交）
+langfuse/
+
 # 系统
 .DS_Store
 Thumbs.db

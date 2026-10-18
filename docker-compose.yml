@@ -2,7 +2,13 @@
 # 用法：
 #   docker compose up -d --build              # 全部（含后端，首次或改代码后加 --build）
 #   docker compose up -d mysql redis          # 仅最小依赖（本地 mvn spring-boot:run 时用）
-# 敏感值从项目根目录 .env 读取（cp .env.example .env），也可用 ${VAR:-默认值} 兜底
+# 注：Langfuse 不在此编排内，使用独立的官方 compose 文件：
+#   git clone https://github.com/langfuse/langfuse.git
+#   cd langfuse
+#   编辑 docker-compose.yml 解决端口冲突（minio 9091→9093 / redis 6379→6380）
+#   docker compose up -d
+# docker compose up -d
+
 
 services:
   mysql:
@@ -108,7 +114,9 @@ services:
       VECTORSTORE_TYPE: ${VECTORSTORE_TYPE:-milvus}
       MILVUS_HOST: ${MILVUS_HOST:-milvus}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
-      LANGFUSE_OTLP_ENDPOINT: ${LANGFUSE_OTLP_ENDPOINT:-}
+      # Langfuse 在独立 compose（langfuse/）里手动拉起，宿主端口 3000
+      # 容器内访问宿主机统一用 host.docker.internal，别写 localhost（那指向容器自己）
+      LANGFUSE_OTLP_ENDPOINT: ${LANGFUSE_OTLP_ENDPOINT:-http://host.docker.internal:3000/api/public/otel/v1/traces}
       LANGFUSE_AUTH_BASIC: ${LANGFUSE_AUTH_BASIC:-}
       APP_ADMIN_USERNAME: ${APP_ADMIN_USERNAME:-admin}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:-admin123}
@@ -118,6 +126,9 @@ services:
       # 预构建 jar 只读挂载（路径不对时容器会提示 /app/app.jar not found）
       - ${JAR_FILE:-./target/resume-review-1.0.0.jar}:/app/app.jar:ro
       - backend-data:/app/data
+    # Linux 上让容器能解析宿主机（Windows/Mac 的 Docker Desktop 原生支持，加了也无害）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mysql:
         condition: service_healthy
