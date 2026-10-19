@@ -52,10 +52,17 @@ spring:
       api-key: ${DASHSCOPE_API_KEY:}
       chat:
         options:
-          model: qwen3.8-max
-          temperature: 0.7
+          model: qwen-flash
+          # model: qwen-plus         # 中档：成本约为 max 的 1/3
+          # model: qwen-flash        # 低档：成本约为 max 的 1/10
+          temperature: 0.3
           max-tokens: 4096
-          multi-model: true # 关键：开启多模态端点
+          # 多模态端点开关：
+          #   true  → 走 /multimodal-generation 端点，只有 qwen-vl-* / omni 类模型可用，
+          #           纯文本模型（qwen-plus / qwen-flash）打上去会报 "url error, please check url!"
+          #   false → 走普通文本生成端点，qwen-plus / qwen-flash / qwen3.8-max 均可用
+          # 本项目简历经 PDFBox 抽成纯文本，所有 LLM 调用皆为纯文本入参，无需多模态端点
+          multi-model: false
     # Milvus 向量库（Spring AI 标准 VectorStore 自动配置）
     vectorstore:
       # 向量库类型开关：Milvus 自动装配的条件是 type=milvus（matchIfMissing=true，即不配就启用）
@@ -70,6 +77,15 @@ spring:
         embedding-dimension: 1024
         # 首次启动自动建库建集合（需 DashScope API Key 已配置）
         initialize-schema: true
+
+# ---------- API 文档（springdoc / Swagger UI）----------
+# 地址：http://localhost:8080/swagger-ui.html   JSON：http://localhost:8080/v3/api-docs
+# 不在 /api/** 下，Sa-Token 登录拦截不影响访问
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
 
 mybatis-plus:
   configuration:
